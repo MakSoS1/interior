@@ -141,6 +141,25 @@ fun InteriorApp() {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !busy,
+                        onClick = {
+                            busy = true
+                            scope.launch {
+                                try {
+                                    val project = withContext(Dispatchers.IO) { store.createOppositeWallFridge() }
+                                    refresh()
+                                    selected = project
+                                    mode = "preview"
+                                } catch (e: Exception) {
+                                    message = e.message ?: "Не удалось открыть модель холодильника"
+                                } finally {
+                                    busy = false
+                                }
+                            }
+                        }
+                    ) { Text("Холодильник · отдельная стена напротив окон") }
                     Text(if (arAvailable) "ARCore обнаружен" else "ARCore недоступен / проверяется. 3D-просмотр работает.", style = MaterialTheme.typography.bodySmall)
                     HorizontalDivider()
                     Text("Мои проекты: " + projects.size, style = MaterialTheme.typography.titleMedium)
