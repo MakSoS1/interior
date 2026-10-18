@@ -25,6 +25,7 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberModelInstance
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -51,8 +52,13 @@ fun InteriorApp() {
     val refresh: () -> Unit = { projects = store.all() }
     LaunchedEffect(mode) {
         if (mode == "projects" || mode == "preview") {
-            arAvailable = try { ArCoreApk.getInstance().checkAvailability(context).isSupported }
-                catch (_: Exception) { false }
+            repeat(15) {
+                val availability = try { ArCoreApk.getInstance().checkAvailability(context) }
+                    catch (_: Exception) { ArCoreApk.Availability.UNKNOWN_ERROR }
+                arAvailable = availability.isSupported
+                if (!availability.isTransient) return@LaunchedEffect
+                delay(200)
+            }
         }
     }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -136,7 +142,15 @@ fun InteriorApp() {
                             Text("Масштаб 1:1. Перетаскивайте пальцем для вращения.", style=MaterialTheme.typography.bodySmall)
                             Button(onClick = {
                                 if (!arAvailable) message = "ARCore не подтверждён. Проверьте Google Play Services for AR."
-                                else if (camGranted) mode="ar" else cameraRequest.launch(Manifest.permission.CAMERA)
+                                else {
+                                    try {
+                                        val activity = context as android.app.Activity
+                                        val result = ArCoreApk.getInstance().requestInstall(activity, true)
+                                        if (result == ArCoreApk.InstallStatus.INSTALLED) {
+                                            if (camGranted) mode = "ar" else cameraRequest.launch(Manifest.permission.CAMERA)
+                                        } else message = "Завершите установку Google Play Services for AR и повторите попытку."
+                                    } catch (e: Exception) { message = e.message ?: "Не удалось запустить ARCore" }
+                                }
                             }, modifier = Modifier.fillMaxWidth()) { Text("Разместить в AR · 1:1") }
                         }
                     }
