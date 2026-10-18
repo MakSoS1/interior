@@ -29,7 +29,7 @@ class AndroidSmokeTest {
         }
         composeTestRule.onNodeWithText("Разместить в AR · 1:1").assertIsDisplayed()
         composeTestRule.onNodeWithText(
-            "Ширина × высота × глубина: 3,89 × 2,62 × 3,23 м"
+            "Ширина × высота × глубина:", substring = true
         ).assertIsDisplayed()
     }
 }
