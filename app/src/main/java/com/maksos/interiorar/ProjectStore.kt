@@ -94,12 +94,37 @@ class ProjectStore(private val context: Context) {
         return title.take(100)
     }
 
-    fun createSample(): KitchenProject {
-        val file = File(assets, "demo_kitchen.glb")
-        if (!file.exists()) context.assets.open("demo_kitchen.glb").use { input ->
-            file.outputStream().use { input.copyTo(it) }
+    fun createSample(): KitchenProject = createBundledSample(
+        "demo_kitchen.glb", "Демонстрационная кухня"
+    )
+
+    /** Full reference-inspired scene. Dimensions are assumptions, not measured room dimensions. */
+    fun createReferenceSample(): KitchenProject = createBundledSample(
+        "reference_kitchen.glb", "Кухня по референсу · оценочные размеры"
+    )
+
+    private fun createBundledSample(assetName: String, title: String): KitchenProject {
+        val file = File(assets, assetName)
+        if (!file.exists()) {
+            val temp = File.createTempFile("import-", ".glb", assets)
+            try {
+                context.assets.open(assetName).use { input ->
+                    temp.outputStream().use { output ->
+                        input.copyTo(output)
+                        output.fd.sync()
+                    }
+                }
+                // Fail loudly before installation, rather than persisting a broken sample.
+                GlbInspector.inspect(temp)
+                if (!temp.renameTo(file)) throw IllegalStateException("Не удалось сохранить модель")
+            } finally {
+                if (temp.exists()) temp.delete()
+            }
         }
-        val project = KitchenProject(UUID.randomUUID().toString(), "Демонстрационная кухня", Uri.fromFile(file).toString(), GlbInspector.inspect(file))
+        val project = KitchenProject(
+            UUID.randomUUID().toString(), title,
+            Uri.fromFile(file).toString(), GlbInspector.inspect(file)
+        )
         save(all() + project)
         return project
     }
