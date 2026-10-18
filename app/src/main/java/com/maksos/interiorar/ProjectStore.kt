@@ -103,6 +103,11 @@ class ProjectStore(private val context: Context) {
         "reference_kitchen.glb", "Кухня по референсу · оценочные размеры"
     )
 
+    /** Separate room wall: refrigerator is seen opposite the panoramic windows in the video. */
+    fun createOppositeWallFridge(): KitchenProject = createBundledSample(
+        "fridge_opposite_wall.glb", "Холодильник · стена напротив панорамных окон"
+    )
+
     private fun createBundledSample(assetName: String, title: String): KitchenProject {
         val file = File(assets, assetName)
         if (!file.exists()) {
