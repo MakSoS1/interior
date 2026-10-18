@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -136,7 +137,7 @@ fun InteriorApp() {
                 }
                 "preview" -> selected?.let { project ->
                     Column(Modifier.fillMaxSize()) {
-                        Box(Modifier.weight(1f)) { ModelPreview(project.modelUri) }
+                        Box(Modifier.weight(1f)) { ModelPreview(project.modelUri, project.dimensions) }
                         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("Ширина × высота × глубина: " + project.dimensions.label())
                             Text("Масштаб 1:1. Перетаскивайте пальцем для вращения.", style=MaterialTheme.typography.bodySmall)
@@ -168,15 +169,26 @@ fun InteriorApp() {
 }
 
 @Composable
-private fun ModelPreview(location: String) {
-    val engine = rememberEngine()
-    val loader = rememberModelLoader(engine)
-    val instance = rememberModelInstance(loader, location)
-    Box(Modifier.fillMaxSize()) {
-        SceneView(modifier=Modifier.fillMaxSize(), engine=engine, modelLoader=loader,
-            cameraManipulator=rememberCameraManipulator()) {
-            instance?.let { ModelNode(modelInstance=it, autoAnimate=false) }
+private fun ModelPreview(location: String, dimensions: ModelDimensions) {
+    // Each project owns its own model loader lifecycle. Reused instances from the prior
+    // project are not shown while switching files.
+    key(location) {
+        val engine = rememberEngine()
+        val loader = rememberModelLoader(engine)
+        val instance = rememberModelInstance(loader, location)
+        val radius = (maxOf(dimensions.width, dimensions.height, dimensions.depth) * 1.9f).coerceIn(2.5f, 20f)
+        Box(Modifier.fillMaxSize()) {
+            SceneView(
+                modifier = Modifier.fillMaxSize(),
+                engine = engine,
+                modelLoader = loader,
+                autoCenterContent = true,
+                autoFitContent = true,
+                cameraManipulator = rememberCameraManipulator(orbitRadius = radius)
+            ) {
+                instance?.let { ModelNode(modelInstance = it, autoAnimate = false) }
+            }
+            if (instance == null) CircularProgressIndicator(Modifier.align(Alignment.Center))
         }
-        if (instance == null) CircularProgressIndicator(Modifier.align(Alignment.Center))
     }
 }
