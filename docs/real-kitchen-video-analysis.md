@@ -46,6 +46,19 @@ Modeling coordinates in metres; +Y is up, +X is to the right along the sink/base
 
 **Critical limitation:** the current Android AR view uses a **single rigid root anchor** per imported GLB. Consequently, if a model combines opposite-wall refrigerator and island with guessed relative separation, it will not automatically align both in the real room. The defensible workflow is to (a) measure room and use a correct common model frame, or (b) implement multiple independent modular anchors. Do not interpret current two-point placement as room-mapping.
 
+### Island utilities and door circulation
+
+Earlier in the kitchen brief, the user identified exposed service pipes / utility connections near the existing dining table. **Do not infer their type, exact position or diameter from this video.** The future island's cooktop requires a verified electrical supply, countertop cut-out and extraction/ventilation design; the visible service stubs may or may not be usable for that.
+
+Before committing to a fitted island, perform a physical survey of those utilities and door swing. Verify:
+- finished floor-to-counter height and unobstructed glass door operation;
+- circulation clearance between the island stools and panoramic glazing;
+- electrical supply / cooktop connection and exhaust option;
+- whether any pipes are water, drainage, heating or electrical conduits;
+- dishwasher service access and refrigerator ventilation against the opposite solid wall.
+
+The illustration uses an estimated 2.55 × 1.05 m island. This is a **design hypothesis**, not an approved construction drawing.
+
 ## 4. What can be tested
 
 Automated:
