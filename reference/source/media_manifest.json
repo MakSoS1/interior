@@ -1,0 +1,40 @@
+{
+  "format_version": 1,
+  "privacy": "Public repository; user explicitly approved publishing the original photo and video",
+  "media_transfer_status": "ORIGINALS_UPLOADED_SHA256_VERIFIED",
+  "intended_repository_paths": {
+    "real_walkthrough": "reference/source/room_walkthrough_original.mp4",
+    "design_reference": "reference/source/scandinavian_kitchen_reference.png"
+  },
+  "originals": [
+    {
+      "file_name": "2026-10-18 15.40.42.mp4",
+      "type": "video/mp4",
+      "bytes": 6682968,
+      "sha256": "b2c45336564b79e9db51fc835b290bbd3517b9bf0274e63caf3240047507f2c3",
+      "duration_seconds": 17.898156,
+      "video_resolution": [
+        720,
+        1280
+      ],
+      "decoded_frames": 458
+    },
+    {
+      "file_name": "ChatGPT Image Oct 18, 2026, 04_08_56 PM.png",
+      "type": "image/png",
+      "bytes": 3058988,
+      "sha256": "0a4b0390a077ec57c60467f58160e7e3a12c052230feb3593e141883f3c0fe54"
+    }
+  ],
+  "source_role": {
+    "mp4": "Actual room geometry and object locations; use timecoded evidence",
+    "png": "Desired interior design reference; not evidence of measured room dimensions"
+  },
+  "verification": "Both originals were committed, original MP4 was reconstructed and verified byte-for-byte in successful GitHub Actions run 39136096379 (2026-10-18). The repository tree confirms MP4 6682968 bytes and PNG 3058988 bytes.",
+  "original_photo_git_blob_sha": "3e39daae5cb3981603b8d27bd96f01b1059e45f8",
+  "video_base64_parts": 12,
+  "reconstruction_command": "python3 scripts/reconstruct_original_video.py",
+  "transfer_note": "Original full-resolution PNG and original MP4 are committed. The 12 Base64 fragments are retained as reproducible transfer/audit sources.",
+  "original_video_git_blob_sha": "13c1e938960c3e057c54c58017a5a97cda69756e",
+  "verification_workflow_url": "https://github.com/MakSoS1/interior/actions/runs/39136096379"
+}

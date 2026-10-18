@@ -1,0 +1,81 @@
+name: Android APK
+on:
+  push:
+    branches: [main, 'feat/**']
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Android API 37
+        run: |
+          SDKMANAGER=$(find /usr/local/lib/android/sdk/cmdline-tools -path '*/bin/sdkmanager' | head -n 1)
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" 'platforms;android-37.0' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: scripts/requirements-reference.txt
+      - name: Install reference-kitchen generator dependencies
+        run: python -m pip install -r scripts/requirements-reference.txt
+      - name: Generate both GLB kitchen scenes
+        run: |
+          python scripts/generate_demo.py --output app/src/main/assets/demo_kitchen.glb
+          python scripts/build_reference_kitchen.py --output app/src/main/assets/reference_kitchen.glb --manifest assets/reference_kitchen_manifest.json
+          python scripts/build_fridge_module.py --output app/src/main/assets/fridge_opposite_wall.glb --manifest assets/fridge_module_manifest.json
+      - name: Verify original unmodified photo and video (strict)
+        run: python scripts/verify_source_media.py
+      - name: Test scale and model geometry
+        run: python -m unittest discover -s scripts -p 'test_*.py' -v
+      - name: Assert generated model exists
+        run: |
+          test -s app/src/main/assets/reference_kitchen.glb
+          test -s app/src/main/assets/fridge_opposite_wall.glb
+          test -s assets/reference_kitchen_manifest.json
+          sha256sum app/src/main/assets/reference_kitchen.glb
+      - name: Build and test Android application
+        run: gradle --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+      - name: APK SHA256
+        run: sha256sum app/build/outputs/apk/debug/app-debug.apk
+      - name: Upload installable debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: interior-ar-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+      - name: Upload Blender-importable design reference
+        uses: actions/upload-artifact@v4
+        with:
+          name: interior-reference-kitchen-glb
+          path: |
+            app/src/main/assets/reference_kitchen.glb
+            app/src/main/assets/fridge_opposite_wall.glb
+            assets/fridge_module_manifest.json
+            assets/reference_kitchen_manifest.json
+          retention-days: 30
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: interior-ar-reports
+          path: |
+            app/build/test-results/
+            app/build/reports/
+          if-no-files-found: ignore
