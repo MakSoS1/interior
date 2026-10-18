@@ -39,6 +39,7 @@ jobs:
         run: |
           python scripts/generate_demo.py --output app/src/main/assets/demo_kitchen.glb
           python scripts/build_reference_kitchen.py --output app/src/main/assets/reference_kitchen.glb --manifest assets/reference_kitchen_manifest.json
+          python scripts/split_reference_kitchen.py --output-dir app/src/main/assets --manifest assets/placement_groups_manifest.json
           python scripts/build_fridge_module.py --output app/src/main/assets/fridge_opposite_wall.glb --manifest assets/fridge_module_manifest.json
       - name: Verify original unmodified photo and video (strict)
         run: python scripts/verify_source_media.py
@@ -48,6 +49,8 @@ jobs:
         run: |
           test -s app/src/main/assets/reference_kitchen.glb
           test -s app/src/main/assets/fridge_opposite_wall.glb
+          test -s app/src/main/assets/reference_wall.glb
+          test -s app/src/main/assets/reference_island.glb
           test -s assets/reference_kitchen_manifest.json
           sha256sum app/src/main/assets/reference_kitchen.glb
       - name: Build and test Android application
@@ -67,6 +70,9 @@ jobs:
           path: |
             app/src/main/assets/reference_kitchen.glb
             app/src/main/assets/fridge_opposite_wall.glb
+            app/src/main/assets/reference_wall.glb
+            app/src/main/assets/reference_island.glb
+            assets/placement_groups_manifest.json
             assets/fridge_module_manifest.json
             assets/reference_kitchen_manifest.json
           retention-days: 30
