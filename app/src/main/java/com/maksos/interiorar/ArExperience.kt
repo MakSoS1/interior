@@ -15,7 +15,7 @@ import com.google.ar.core.Pose
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.gesture.rememberOnGestureListener
+import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
