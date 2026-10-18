@@ -30,10 +30,13 @@ fun ArExperience(project: KitchenProject, onPlacementSaved: (Float, Float, Float
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val model = rememberModelInstance(modelLoader, project.modelUri)
+    val fridgeModel = rememberModelInstance(modelLoader, "fridge_opposite_wall.glb")
     val frameRef = remember { arrayOfNulls<Frame>(1) }
     val sessionRef = remember { arrayOfNulls<Session>(1) }
     var first by remember { mutableStateOf<Point3?>(null) }
     var anchor by remember { mutableStateOf<Anchor?>(null) }
+    var fridgeAnchor by remember { mutableStateOf<Anchor?>(null) }
+    var placingFridge by remember { mutableStateOf(false) }
     var selectedFloor by remember { mutableStateOf<Plane?>(null) }
     var status by remember { mutableStateOf("Наведите камеру на пол и отметьте начало гарнитура") }
     var x by remember(project.id) { mutableFloatStateOf(project.offsetX) }
@@ -46,18 +49,22 @@ fun ArExperience(project: KitchenProject, onPlacementSaved: (Float, Float, Float
         val currentAnchor = anchor
         onDispose { currentAnchor?.detach() }
     }
+    DisposableEffect(fridgeAnchor) {
+        val currentAnchor = fridgeAnchor
+        onDispose { currentAnchor?.detach() }
+    }
 
     Box(Modifier.fillMaxSize()) {
         ARSceneView(
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,
-            planeRenderer = anchor == null,
+            planeRenderer = anchor == null || placingFridge,
             sceneUnderstanding = SceneUnderstanding(
                 occlusion = depthEnabled && depthSupported,
                 lighting = true,
                 physics = false,
-                planeVisualization = anchor == null
+                planeVisualization = anchor == null || placingFridge
             ),
             depthMode = if (depthEnabled && depthSupported) Config.DepthMode.AUTOMATIC else Config.DepthMode.DISABLED,
             onSessionCreated = { session ->
@@ -87,7 +94,7 @@ fun ArExperience(project: KitchenProject, onPlacementSaved: (Float, Float, Float
             },
             onGestureListener = rememberOnGestureListener(
                 onSingleTapConfirmed = { event, _ ->
-                    if (anchor == null) {
+                    if (anchor == null || placingFridge) {
                         val hit = frameRef[0]?.hitTest(event)?.firstOrNull {
                             val p = it.trackable as? Plane
                             p != null && p.type == Plane.Type.HORIZONTAL_UPWARD_FACING &&
@@ -99,9 +106,11 @@ fun ArExperience(project: KitchenProject, onPlacementSaved: (Float, Float, Float
                             val t = hit.hitPose.translation
                             val point = Point3(t[0], t[1], t[2])
                             if (first == null) {
-                                selectedFloor = hit.trackable as? Plane
+                                if (!placingFridge) selectedFloor = hit.trackable as? Plane
                                 first = point
-                                status = "Укажите вторую точку вдоль стены, не ближе 50 см"
+                                status = if (placingFridge)
+                                    "Отметьте вторую точку вдоль стены холодильника (от 50 см)"
+                                else "Укажите вторую точку вдоль стены, не ближе 50 см"
                             } else {
                                 val direction = PlacementMath.wallFromPoints(first!!, point)
                                 val session = sessionRef[0]
@@ -114,9 +123,16 @@ fun ArExperience(project: KitchenProject, onPlacementSaved: (Float, Float, Float
                                         Pose.makeRotation(0f, sin(half), 0f, cos(half))
                                     )
                                     try {
-                                        anchor = session.createAnchor(pose)
-                                        status = "Гарнитур закреплён. Можно ходить вокруг и корректировать положение."
-                                        onPlacementSaved(x, z, yaw)
+                                        if (placingFridge) {
+                                            fridgeAnchor = session.createAnchor(pose)
+                                            placingFridge = false
+                                            first = null
+                                            status = "Холодильник и кухонный остров теперь закреплены независимо. Обойдите оба."
+                                        } else {
+                                            anchor = session.createAnchor(pose)
+                                            status = "Гарнитур закреплён. Можно ходить вокруг и корректировать положение."
+                                            onPlacementSaved(x, z, yaw)
+                                        }
                                     } catch (e: Exception) { onError(e.message ?: "Не удалось создать AR Anchor") }
                                 }
                             }
@@ -145,6 +161,13 @@ fun ArExperience(project: KitchenProject, onPlacementSaved: (Float, Float, Float
                     }
                 }
             }
+            fridgeAnchor?.let { current ->
+                AnchorNode(anchor = current) {
+                    fridgeModel?.let { instance ->
+                        ModelNode(modelInstance = instance, autoAnimate = false)
+                    }
+                }
+            }
         }
 
         Surface(Modifier.align(Alignment.TopCenter).padding(12.dp), tonalElevation = 5.dp) {
@@ -153,6 +176,28 @@ fun ArExperience(project: KitchenProject, onPlacementSaved: (Float, Float, Float
 
         Column(Modifier.align(Alignment.BottomCenter).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (anchor != null) {
+                if (project.modelUri.contains("reference_kitchen") && fridgeAnchor == null) {
+                    Button(
+                        enabled = !placingFridge && fridgeModel != null,
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            placingFridge = true
+                            first = null
+                            status = "Наведите камеру на пол у НЕПРОЗРАЧНОЙ стены напротив панорамных окон"
+                        }
+                    ) { Text(if (placingFridge) "Размещаем холодильник…" else "Добавить холодильник у противоположной стены") }
+                }
+                if (fridgeAnchor != null) {
+                    OutlinedButton(
+                        onClick = {
+                            fridgeAnchor = null
+                            placingFridge = true
+                            first = null
+                            status = "Повторно отметьте две точки у стены холодильника"
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Переместить холодильник отдельно") }
+                }
                 Surface(tonalElevation = 5.dp, shape=MaterialTheme.shapes.medium) {
                     Column(Modifier.padding(8.dp), verticalArrangement=Arrangement.spacedBy(4.dp)) {
                         Row(horizontalArrangement=Arrangement.spacedBy(4.dp)) {
@@ -167,6 +212,8 @@ fun ArExperience(project: KitchenProject, onPlacementSaved: (Float, Float, Float
                             SmallButton("180°") { yaw=PlacementMath.normalizeDegrees(yaw+180f); onPlacementSaved(x,z,yaw) }
                             SmallButton("Переставить") {
                                 anchor = null
+                                fridgeAnchor = null
+                                placingFridge = false
                                 selectedFloor = null
                                 first = null
                                 status = "Наведите камеру на пол и отметьте начало гарнитура"
