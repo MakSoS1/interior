@@ -3,6 +3,7 @@ package com.maksos.interiorar
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -33,12 +34,14 @@ fun ArExperience(project: KitchenProject, onPlacementSaved: (Float, Float, Float
     val sessionRef = remember { arrayOfNulls<Session>(1) }
     var first by remember { mutableStateOf<Point3?>(null) }
     var anchor by remember { mutableStateOf<Anchor?>(null) }
+    var selectedFloor by remember { mutableStateOf<Plane?>(null) }
     var status by remember { mutableStateOf("Наведите камеру на пол и отметьте начало гарнитура") }
     var x by remember(project.id) { mutableFloatStateOf(project.offsetX) }
     var z by remember(project.id) { mutableFloatStateOf(project.offsetZ) }
     var yaw by remember(project.id) { mutableFloatStateOf(project.rotationDegrees) }
     var depthEnabled by remember { mutableStateOf(true) }
     var depthSupported by remember { mutableStateOf(false) }
+    var floorShadows by remember { mutableStateOf(true) }
     DisposableEffect(anchor) {
         val currentAnchor = anchor
         onDispose { currentAnchor?.detach() }
@@ -96,6 +99,7 @@ fun ArExperience(project: KitchenProject, onPlacementSaved: (Float, Float, Float
                             val t = hit.hitPose.translation
                             val point = Point3(t[0], t[1], t[2])
                             if (first == null) {
+                                selectedFloor = hit.trackable as? Plane
                                 first = point
                                 status = "Укажите вторую точку вдоль стены, не ближе 50 см"
                             } else {
@@ -121,6 +125,14 @@ fun ArExperience(project: KitchenProject, onPlacementSaved: (Float, Float, Float
                 }
             )
         ) {
+            // SceneView's native Filament shadow receiver darkens only the captured
+            // floor under virtual cabinets; hide the plane grid after placement
+            // to avoid two overlapping receivers on one physical surface.
+            selectedFloor?.let { floor ->
+                if (anchor != null && floorShadows) {
+                    key(floor) { ShadowReceiverPlane(plane = floor, shadowIntensity = .54f) }
+                }
+            }
             anchor?.let { current ->
                 AnchorNode(anchor = current) {
                     model?.let { instance ->
@@ -155,6 +167,7 @@ fun ArExperience(project: KitchenProject, onPlacementSaved: (Float, Float, Float
                             SmallButton("180°") { yaw=PlacementMath.normalizeDegrees(yaw+180f); onPlacementSaved(x,z,yaw) }
                             SmallButton("Переставить") {
                                 anchor = null
+                                selectedFloor = null
                                 first = null
                                 status = "Наведите камеру на пол и отметьте начало гарнитура"
                             }
@@ -168,6 +181,8 @@ fun ArExperience(project: KitchenProject, onPlacementSaved: (Float, Float, Float
                     Spacer(Modifier.width(8.dp))
                     Text(if (depthSupported) "Depth Occlusion" else "Depth не поддерживается",style=MaterialTheme.typography.bodySmall)
                     Switch(checked=depthEnabled && depthSupported,onCheckedChange={depthEnabled=it},enabled=depthSupported)
+                    Text("Тени",style=MaterialTheme.typography.bodySmall)
+                    Switch(checked=floorShadows,onCheckedChange={floorShadows=it})
                 }
             }
         }
