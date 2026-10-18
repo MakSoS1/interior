@@ -1,11 +1,14 @@
 package com.maksos.interiorar
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
@@ -16,220 +19,268 @@ import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.scene.SceneUnderstanding
-import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
-import kotlin.math.sin
 import kotlin.math.cos
+import kotlin.math.sin
 
+/**
+ * Metric AR placement: an ARCore world-coordinate floor raycast under a fixed
+ * centre reticle, three confirmed floor points (A/B/C), and one independent
+ * ARCore Anchor per furniture assembly. All objects keep local GLB scale 1.0.
+ *
+ * An ordinary MP4 recording contains no ARCore camera poses; it is not used to
+ * claim that the real room has been reconstructed or measured.
+ */
 @Composable
-fun ArExperience(project: KitchenProject, onPlacementSaved: (Float, Float, Float)->Unit, onError: (String)->Unit) {
+fun ArExperience(
+    project: KitchenProject,
+    onPlacementSaved: (PlacementTarget, Float, Float, Float) -> Unit,
+    onError: (String) -> Unit
+) {
+    val reference = project.modelUri.contains("reference_kitchen")
     val engine = rememberEngine()
-    val modelLoader = rememberModelLoader(engine)
-    val model = rememberModelInstance(modelLoader, project.modelUri)
-    val fridgeModel = rememberModelInstance(modelLoader, "fridge_opposite_wall.glb")
-    val frameRef = remember { arrayOfNulls<Frame>(1) }
-    val sessionRef = remember { arrayOfNulls<Session>(1) }
-    var first by remember { mutableStateOf<Point3?>(null) }
-    var anchor by remember { mutableStateOf<Anchor?>(null) }
-    var fridgeAnchor by remember { mutableStateOf<Anchor?>(null) }
-    var placingFridge by remember { mutableStateOf(false) }
-    var selectedFloor by remember { mutableStateOf<Plane?>(null) }
-    var status by remember { mutableStateOf("Наведите камеру на пол и отметьте начало гарнитура") }
-    var x by remember(project.id) { mutableFloatStateOf(project.offsetX) }
-    var z by remember(project.id) { mutableFloatStateOf(project.offsetZ) }
-    var yaw by remember(project.id) { mutableFloatStateOf(project.rotationDegrees) }
-    var depthEnabled by remember { mutableStateOf(true) }
-    var depthSupported by remember { mutableStateOf(false) }
-    var floorShadows by remember { mutableStateOf(true) }
-    DisposableEffect(anchor) {
-        val currentAnchor = anchor
-        onDispose { currentAnchor?.detach() }
-    }
-    DisposableEffect(fridgeAnchor) {
-        val currentAnchor = fridgeAnchor
-        onDispose { currentAnchor?.detach() }
+    val loader = rememberModelLoader(engine)
+    val wallModel = rememberModelInstance(
+        loader, if (reference) "reference_wall.glb" else project.modelUri
+    )
+    val islandModel = rememberModelInstance(loader, "reference_island.glb")
+    val fridgeModel = rememberModelInstance(loader, "fridge_opposite_wall.glb")
+    val anchors = remember(project.id) { mutableStateMapOf<PlacementTarget, Anchor>() }
+    val adjustments = remember(project.id) {
+        mutableStateMapOf(
+            PlacementTarget.WALL to ModuleAdjustment(project.offsetX,project.offsetZ,project.rotationDegrees),
+            PlacementTarget.ISLAND to project.islandAdjust,
+            PlacementTarget.FRIDGE to project.fridgeAdjust
+        )
     }
 
-    Box(Modifier.fillMaxSize()) {
+    var activeTarget by remember(project.id) { mutableStateOf<PlacementTarget?>(PlacementTarget.WALL) }
+    var selectedTarget by remember(project.id) { mutableStateOf(PlacementTarget.WALL) }
+    var machine by remember(project.id) { mutableStateOf(FloorCalibrationMachine(PlacementTarget.WALL)) }
+    var floorPlane by remember { mutableStateOf<Plane?>(null) }
+    var tracking by remember { mutableStateOf(false) }
+    var canUseDepth by remember { mutableStateOf(false) }
+    var useDepth by remember { mutableStateOf(true) }
+    var shadows by remember { mutableStateOf(true) }
+    var viewport by remember { mutableStateOf(IntSize.Zero) }
+    var status by remember {
+        mutableStateOf("Поставьте прицел на ПОЛ в левом заднем углу мебели и зафиксируйте A")
+    }
+
+    val currentFrame = remember { arrayOfNulls<Frame>(1) }
+    val currentSession = remember { arrayOfNulls<Session>(1) }
+    DisposableEffect(project.id) {
+        onDispose { anchors.values.forEach { it.detach() }; anchors.clear() }
+    }
+
+    fun begin(target: PlacementTarget) {
+        activeTarget = target
+        selectedTarget = target
+        machine = FloorCalibrationMachine(target)
+        status = when (target) {
+            PlacementTarget.WALL -> "Гарнитур: направьте прицел на пол у левого края стены → A"
+            PlacementTarget.ISLAND -> "ОСТРОВ: отметьте на полу его ЗАДНИЙ ЛЕВЫЙ угол A; не верх столешницы"
+            PlacementTarget.FRIDGE -> "Холодильник: точка A на полу у стены напротив панорамных окон"
+        }
+    }
+
+    fun capturePoint() {
+        val target = activeTarget ?: return
+        val frame = currentFrame[0]
+        val session = currentSession[0]
+        if (frame == null || session == null || !tracking || viewport.width < 1 || viewport.height < 1) {
+            status = "Подождите, пока ARCore восстановит отслеживание камеры и обнаружит пол"
+            return
+        }
+        // Centre-targeted pixel ray, not an arbitrary touch on the UI overlay.
+        val hit = frame.hitTest(viewport.width / 2f, viewport.height / 2f).firstOrNull {
+            val plane = it.trackable as? Plane
+            plane != null && plane.type == Plane.Type.HORIZONTAL_UPWARD_FACING &&
+                plane.trackingState == TrackingState.TRACKING &&
+                plane.isPoseInPolygon(it.hitPose)
+        }
+        if (hit == null) {
+            status = "Не найдена горизонтальная плоскость под прицелом. Подойдите к полу и поводите камерой"
+            return
+        }
+        val t = hit.hitPose.translation
+        val update = machine.add(Point3(t[0], t[1], t[2]))
+        when (update) {
+            is CalibrationUpdate.NeedNext -> {
+                status = update.instruction + " (" + update.pointsCollected + "/3)"
+                if (update.pointsCollected == 1 && target == PlacementTarget.WALL)
+                    floorPlane = hit.trackable as? Plane
+            }
+            is CalibrationUpdate.Invalid -> status = update.reason
+            is CalibrationUpdate.Ready -> {
+                val cal = update.calibration
+                val half = cal.yawRadians / 2f
+                val pose = Pose.makeTranslation(cal.origin.x, cal.origin.y, cal.origin.z)
+                    .compose(Pose.makeRotation(0f, sin(half), 0f, cos(half)))
+                try {
+                    val newAnchor = session.createAnchor(pose)
+                    anchors.remove(target)?.detach()
+                    anchors[target] = newAnchor
+                    activeTarget = null
+                    selectedTarget = target
+                    status = when (target) {
+                        PlacementTarget.WALL -> "Гарнитур привязан к полу. Теперь разместите остров отдельными точками."
+                        PlacementTarget.ISLAND -> "Остров стоит на выбранном полу. Проверьте со всех сторон."
+                        PlacementTarget.FRIDGE -> "Холодильник привязан к противоположной стене."
+                    }
+                } catch(e: Exception) {
+                    status = "Не удалось создать Anchor: " + (e.message ?: "ошибка ARCore")
+                }
+            }
+        }
+    }
+
+    fun move(dx: Float=0f, dz: Float=0f, dyaw: Float=0f) {
+        val p = adjustments[selectedTarget] ?: ModuleAdjustment()
+        val corrected = p.adjusted(dx,dz,dyaw)
+        adjustments[selectedTarget] = corrected
+        onPlacementSaved(selectedTarget, corrected.xMeters, corrected.zMeters, corrected.yawDegrees)
+    }
+
+    Box(Modifier.fillMaxSize().onSizeChanged { viewport = it }) {
         ARSceneView(
             modifier = Modifier.fillMaxSize(),
             engine = engine,
-            modelLoader = modelLoader,
-            planeRenderer = anchor == null || placingFridge,
+            modelLoader = loader,
+            planeRenderer = activeTarget != null,
             sceneUnderstanding = SceneUnderstanding(
-                occlusion = depthEnabled && depthSupported,
+                occlusion = useDepth && canUseDepth,
                 lighting = true,
                 physics = false,
-                planeVisualization = anchor == null || placingFridge
+                planeVisualization = activeTarget != null
             ),
-            depthMode = if (depthEnabled && depthSupported) Config.DepthMode.AUTOMATIC else Config.DepthMode.DISABLED,
+            depthMode = if (useDepth && canUseDepth)
+                Config.DepthMode.AUTOMATIC else Config.DepthMode.DISABLED,
             onSessionCreated = { session ->
-                depthSupported = session.isDepthModeSupported(Config.DepthMode.AUTOMATIC)
+                canUseDepth = session.isDepthModeSupported(Config.DepthMode.AUTOMATIC)
             },
             sessionConfiguration = { _, config ->
                 config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL
                 config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
             },
-            onSessionFailed = { error ->
-                onError(error.message ?: "ARCore не запустился на этом устройстве")
-            },
-            onTrackingFailureChanged = { reason ->
-                if (reason != null && reason != com.google.ar.core.TrackingFailureReason.NONE) {
-                    status = when(reason) {
-                        com.google.ar.core.TrackingFailureReason.INSUFFICIENT_LIGHT -> "Недостаточно света для отслеживания"
-                        com.google.ar.core.TrackingFailureReason.EXCESSIVE_MOTION -> "Двигайте телефон медленнее"
-                        com.google.ar.core.TrackingFailureReason.INSUFFICIENT_FEATURES -> "Наведите камеру на поверхность с деталями"
-                        com.google.ar.core.TrackingFailureReason.CAMERA_UNAVAILABLE -> "Камера недоступна: закройте другие приложения"
-                        else -> "AR-трекинг приостановлен"
-                    }
-                }
-            },
+            onSessionFailed = { e -> onError(e.message ?: "ARCore не запустился") },
             onSessionUpdated = { session, frame ->
-                sessionRef[0] = session
-                frameRef[0] = frame
-            },
-            onGestureListener = rememberOnGestureListener(
-                onSingleTapConfirmed = { event, _ ->
-                    if (anchor == null || placingFridge) {
-                        val hit = frameRef[0]?.hitTest(event)?.firstOrNull {
-                            val p = it.trackable as? Plane
-                            p != null && p.type == Plane.Type.HORIZONTAL_UPWARD_FACING &&
-                                p.trackingState == TrackingState.TRACKING && p.isPoseInPolygon(it.hitPose)
-                        }
-                        if (hit == null) {
-                            status = "Пол пока не найден — перемещайте телефон плавно"
-                        } else {
-                            val t = hit.hitPose.translation
-                            val point = Point3(t[0], t[1], t[2])
-                            if (first == null) {
-                                if (!placingFridge) selectedFloor = hit.trackable as? Plane
-                                first = point
-                                status = if (placingFridge)
-                                    "Отметьте вторую точку вдоль стены холодильника (от 50 см)"
-                                else "Укажите вторую точку вдоль стены, не ближе 50 см"
-                            } else {
-                                val direction = PlacementMath.wallFromPoints(first!!, point)
-                                val session = sessionRef[0]
-                                if (direction == null || session == null) {
-                                    status = "Отметьте вторую точку дальше от первой"
-                                } else {
-                                    val half = direction.yawRadians / 2f
-                                    val a = first!!
-                                    val pose = Pose.makeTranslation(a.x, a.y, a.z).compose(
-                                        Pose.makeRotation(0f, sin(half), 0f, cos(half))
-                                    )
-                                    try {
-                                        if (placingFridge) {
-                                            fridgeAnchor = session.createAnchor(pose)
-                                            placingFridge = false
-                                            first = null
-                                            status = "Холодильник и кухонный остров теперь закреплены независимо. Обойдите оба."
-                                        } else {
-                                            anchor = session.createAnchor(pose)
-                                            status = "Гарнитур закреплён. Можно ходить вокруг и корректировать положение."
-                                            onPlacementSaved(x, z, yaw)
-                                        }
-                                    } catch (e: Exception) { onError(e.message ?: "Не удалось создать AR Anchor") }
-                                }
-                            }
-                        }
-                    }
-                }
-            )
+                currentSession[0] = session
+                currentFrame[0] = frame
+                val isTracking = frame.camera.trackingState == TrackingState.TRACKING
+                if (isTracking != tracking) tracking = isTracking
+            }
         ) {
-            // SceneView's native Filament shadow receiver darkens only the captured
-            // floor under virtual cabinets; hide the plane grid after placement
-            // to avoid two overlapping receivers on one physical surface.
-            selectedFloor?.let { floor ->
-                if (anchor != null && floorShadows) {
-                    key(floor) { ShadowReceiverPlane(plane = floor, shadowIntensity = .54f) }
-                }
+            floorPlane?.let { floor ->
+                if (anchors.containsKey(PlacementTarget.WALL) && shadows)
+                    ShadowReceiverPlane(plane=floor, shadowIntensity=.52f)
             }
-            anchor?.let { current ->
-                AnchorNode(anchor = current) {
-                    model?.let { instance ->
-                        ModelNode(
-                            modelInstance = instance,
-                            autoAnimate = false,
-                            position = Position(x = x, y = 0f, z = z),
-                            rotation = Rotation(y = yaw)
-                        )
+            anchors[PlacementTarget.WALL]?.let { anchored ->
+                AnchorNode(anchor=anchored) {
+                    wallModel?.let { asset ->
+                        val p = adjustments[PlacementTarget.WALL] ?: ModuleAdjustment()
+                        ModelNode(modelInstance=asset,autoAnimate=false,
+                            position=Position(x=p.xMeters,y=0f,z=p.zMeters),
+                            rotation=Rotation(y=p.yawDegrees))
                     }
                 }
             }
-            fridgeAnchor?.let { current ->
-                AnchorNode(anchor = current) {
-                    fridgeModel?.let { instance ->
-                        ModelNode(modelInstance = instance, autoAnimate = false)
+            if (reference) {
+                anchors[PlacementTarget.ISLAND]?.let { anchored ->
+                    AnchorNode(anchor=anchored) {
+                        islandModel?.let { asset ->
+                            val p = adjustments[PlacementTarget.ISLAND] ?: ModuleAdjustment()
+                            ModelNode(modelInstance=asset,autoAnimate=false,
+                                position=Position(x=p.xMeters,y=0f,z=p.zMeters),
+                                rotation=Rotation(y=p.yawDegrees))
+                        }
+                    }
+                }
+                anchors[PlacementTarget.FRIDGE]?.let { anchored ->
+                    AnchorNode(anchor=anchored) {
+                        fridgeModel?.let { asset ->
+                            val p = adjustments[PlacementTarget.FRIDGE] ?: ModuleAdjustment()
+                            ModelNode(modelInstance=asset,autoAnimate=false,
+                                position=Position(x=p.xMeters,y=0f,z=p.zMeters),
+                                rotation=Rotation(y=p.yawDegrees))
+                        }
                     }
                 }
             }
         }
-
-        Surface(Modifier.align(Alignment.TopCenter).padding(12.dp), tonalElevation = 5.dp) {
-            Text(status, Modifier.padding(12.dp), style=MaterialTheme.typography.bodyMedium)
+        if (activeTarget != null) {
+            Box(Modifier.align(Alignment.Center),contentAlignment=Alignment.Center) {
+                Text("+",style=MaterialTheme.typography.displayLarge,
+                    color=if(tracking) Color(0xFF55DF9F) else Color(0xFFFF8866))
+            }
         }
-
-        Column(Modifier.align(Alignment.BottomCenter).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (anchor != null) {
-                if (project.modelUri.contains("reference_kitchen") && fridgeAnchor == null) {
-                    Button(
-                        enabled = !placingFridge && fridgeModel != null,
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = {
-                            placingFridge = true
-                            first = null
-                            status = "Наведите камеру на пол у НЕПРОЗРАЧНОЙ стены напротив панорамных окон"
+        Surface(Modifier.align(Alignment.TopCenter).padding(10.dp),
+            shape=MaterialTheme.shapes.medium,tonalElevation=4.dp) {
+            Column(Modifier.padding(10.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                Text(if(tracking) "ARCore: отслеживание активно" else "ARCore: нет устойчивого трекинга",
+                    style=MaterialTheme.typography.labelMedium)
+                Text(status,style=MaterialTheme.typography.bodySmall)
+                if (activeTarget != null) Text("A — угол на полу; B — направление вправо; C — сторона комнаты",
+                    style=MaterialTheme.typography.labelSmall)
+            }
+        }
+        Column(Modifier.align(Alignment.BottomCenter).padding(9.dp),
+            verticalArrangement=Arrangement.spacedBy(5.dp)) {
+            Surface(tonalElevation=5.dp,shape=MaterialTheme.shapes.medium) {
+                Column(Modifier.padding(8.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
+                    if(activeTarget!=null) {
+                        Button(onClick={capturePoint()},enabled=tracking,modifier=Modifier.fillMaxWidth()) {
+                            Text("Зафиксировать точку " + when(machine.count) {
+                                0 -> "A"; 1 -> "B"; else -> "C"
+                            } + " · прицел по центру")
                         }
-                    ) { Text(if (placingFridge) "Размещаем холодильник…" else "Добавить холодильник у противоположной стены") }
-                }
-                if (fridgeAnchor != null) {
-                    OutlinedButton(
-                        onClick = {
-                            fridgeAnchor = null
-                            placingFridge = true
-                            first = null
-                            status = "Повторно отметьте две точки у стены холодильника"
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text("Переместить холодильник отдельно") }
-                }
-                Surface(tonalElevation = 5.dp, shape=MaterialTheme.shapes.medium) {
-                    Column(Modifier.padding(8.dp), verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                        Row(horizontalArrangement=Arrangement.spacedBy(4.dp)) {
-                            SmallButton("← 1 см") { x -= .01f; onPlacementSaved(x,z,yaw) }
-                            SmallButton("1 см →") { x += .01f; onPlacementSaved(x,z,yaw) }
-                            SmallButton("↑ 1 см") { z += .01f; onPlacementSaved(x,z,yaw) }
-                            SmallButton("↓ 1 см") { z -= .01f; onPlacementSaved(x,z,yaw) }
+                        OutlinedButton(onClick={begin(activeTarget!!)},modifier=Modifier.fillMaxWidth()) {
+                            Text("Начать эту привязку заново")
                         }
-                        Row(horizontalArrangement=Arrangement.spacedBy(4.dp)) {
-                            SmallButton("↺ 5°") { yaw=PlacementMath.normalizeDegrees(yaw-5f); onPlacementSaved(x,z,yaw) }
-                            SmallButton("↻ 5°") { yaw=PlacementMath.normalizeDegrees(yaw+5f); onPlacementSaved(x,z,yaw) }
-                            SmallButton("180°") { yaw=PlacementMath.normalizeDegrees(yaw+180f); onPlacementSaved(x,z,yaw) }
-                            SmallButton("Переставить") {
-                                anchor = null
-                                fridgeAnchor = null
-                                placingFridge = false
-                                selectedFloor = null
-                                first = null
-                                status = "Наведите камеру на пол и отметьте начало гарнитура"
+                    } else {
+                        Text("Выбери мебель для привязки или точной поправки",
+                            style=MaterialTheme.typography.bodySmall)
+                    }
+                    Row(horizontalArrangement=Arrangement.spacedBy(3.dp)) {
+                        CompactButton("Гарнитур",Modifier.weight(1f)) { begin(PlacementTarget.WALL) }
+                        if(reference) {
+                            CompactButton("Остров",Modifier.weight(1f)) { begin(PlacementTarget.ISLAND) }
+                            CompactButton("Холодильник",Modifier.weight(1f)) { begin(PlacementTarget.FRIDGE) }
+                        }
+                    }
+                    if (anchors.isNotEmpty()) {
+                        Row(horizontalArrangement=Arrangement.spacedBy(3.dp)) {
+                            for(target in anchors.keys.sortedBy { it.ordinal }) {
+                                CompactButton(when(target) {
+                                    PlacementTarget.WALL -> "Шкафы"
+                                    PlacementTarget.ISLAND -> "Остров"
+                                    PlacementTarget.FRIDGE -> "Холод."
+                                },Modifier.weight(1f)) { selectedTarget=target }
                             }
                         }
+                        Text("Поправка: " + selectedTarget.name + " · 1 см / 5°",
+                            style=MaterialTheme.typography.labelSmall)
+                        Row(horizontalArrangement=Arrangement.spacedBy(2.dp)) {
+                            CompactButton("←",Modifier.weight(1f)) { move(dx=-.01f) }
+                            CompactButton("→",Modifier.weight(1f)) { move(dx=.01f) }
+                            CompactButton("↑",Modifier.weight(1f)) { move(dz=-.01f) }
+                            CompactButton("↓",Modifier.weight(1f)) { move(dz=.01f) }
+                            CompactButton("↺",Modifier.weight(1f)) { move(dyaw=-5f) }
+                            CompactButton("↻",Modifier.weight(1f)) { move(dyaw=5f) }
+                        }
                     }
-                }
-            }
-            Surface(tonalElevation=5.dp,shape=MaterialTheme.shapes.medium) {
-                Row(Modifier.padding(horizontal=8.dp),verticalAlignment=Alignment.CenterVertically) {
-                    Text("Живой свет: HDR",style=MaterialTheme.typography.bodySmall)
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (depthSupported) "Depth Occlusion" else "Depth не поддерживается",style=MaterialTheme.typography.bodySmall)
-                    Switch(checked=depthEnabled && depthSupported,onCheckedChange={depthEnabled=it},enabled=depthSupported)
-                    Text("Тени",style=MaterialTheme.typography.bodySmall)
-                    Switch(checked=floorShadows,onCheckedChange={floorShadows=it})
+                    Row(verticalAlignment=Alignment.CenterVertically) {
+                        Text("Свет: Live HDR",style=MaterialTheme.typography.labelSmall)
+                        Spacer(Modifier.weight(1f))
+                        Text("Depth",style=MaterialTheme.typography.labelSmall)
+                        Switch(checked=useDepth && canUseDepth,onCheckedChange={useDepth=it},enabled=canUseDepth)
+                        Text("Тени",style=MaterialTheme.typography.labelSmall)
+                        Switch(checked=shadows,onCheckedChange={shadows=it})
+                    }
                 }
             }
         }
@@ -237,8 +288,9 @@ fun ArExperience(project: KitchenProject, onPlacementSaved: (Float, Float, Float
 }
 
 @Composable
-private fun SmallButton(text:String,onClick:()->Unit) {
-    OutlinedButton(onClick=onClick,contentPadding=PaddingValues(horizontal=8.dp,vertical=2.dp)) {
-        Text(text,style=MaterialTheme.typography.labelSmall)
+private fun CompactButton(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    OutlinedButton(modifier=modifier,onClick=onClick,
+        contentPadding=PaddingValues(horizontal=2.dp,vertical=2.dp)) {
+        Text(label, style=MaterialTheme.typography.labelSmall)
     }
 }

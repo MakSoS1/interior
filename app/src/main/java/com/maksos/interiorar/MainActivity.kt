@@ -200,8 +200,12 @@ fun InteriorApp() {
                     }
                 }
                 "ar" -> selected?.let { project ->
-                    ArExperience(project, onPlacementSaved = { x,z,yaw ->
-                        val updated = project.copy(offsetX=x,offsetZ=z,rotationDegrees=yaw)
+                    ArExperience(project, onPlacementSaved = { target,x,z,yaw ->
+                        val updated = when (target) {
+                            PlacementTarget.WALL -> project.copy(offsetX=x,offsetZ=z,rotationDegrees=yaw)
+                            PlacementTarget.ISLAND -> project.copy(islandAdjust=ModuleAdjustment(x,z,yaw))
+                            PlacementTarget.FRIDGE -> project.copy(fridgeAdjust=ModuleAdjustment(x,z,yaw))
+                        }
                         selected=updated; store.update(updated); refresh()
                     }, onError = { message=it })
                 }

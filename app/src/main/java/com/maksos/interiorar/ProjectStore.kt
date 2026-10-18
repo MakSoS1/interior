@@ -16,7 +16,9 @@ data class KitchenProject(
     val dimensions: ModelDimensions,
     val offsetX: Float = 0f,
     val offsetZ: Float = 0f,
-    val rotationDegrees: Float = 0f
+    val rotationDegrees: Float = 0f,
+    val islandAdjust: ModuleAdjustment = ModuleAdjustment(),
+    val fridgeAdjust: ModuleAdjustment = ModuleAdjustment()
 )
 
 data class ModelDimensions(val width: Float, val height: Float, val depth: Float) {
@@ -35,7 +37,9 @@ class ProjectStore(private val context: Context) {
                 KitchenProject(
                     j.getString("id"), j.getString("name"), j.getString("uri"),
                     ModelDimensions(j.getDouble("w").toFloat(), j.getDouble("h").toFloat(), j.getDouble("d").toFloat()),
-                    j.optDouble("x", 0.0).toFloat(), j.optDouble("z", 0.0).toFloat(), j.optDouble("yaw", 0.0).toFloat()
+                    j.optDouble("x", 0.0).toFloat(), j.optDouble("z", 0.0).toFloat(), j.optDouble("yaw", 0.0).toFloat(),
+                    ModuleAdjustment(j.optDouble("ix", 0.0).toFloat(), j.optDouble("iz", 0.0).toFloat(), j.optDouble("iyaw", 0.0).toFloat()),
+                    ModuleAdjustment(j.optDouble("fx", 0.0).toFloat(), j.optDouble("fz", 0.0).toFloat(), j.optDouble("fyaw", 0.0).toFloat())
                 )
             } catch (_: Exception) { null }
         }
@@ -50,6 +54,8 @@ class ProjectStore(private val context: Context) {
                 put("d",p.dimensions.depth.toDouble())
                 put("x",p.offsetX.toDouble()); put("z",p.offsetZ.toDouble())
                 put("yaw",p.rotationDegrees.toDouble())
+                put("ix",p.islandAdjust.xMeters.toDouble()); put("iz",p.islandAdjust.zMeters.toDouble()); put("iyaw",p.islandAdjust.yawDegrees.toDouble())
+                put("fx",p.fridgeAdjust.xMeters.toDouble()); put("fz",p.fridgeAdjust.zMeters.toDouble()); put("fyaw",p.fridgeAdjust.yawDegrees.toDouble())
             })
         }
         require(prefs.edit().putString("projects", array.toString()).commit()) { "Не удалось сохранить проект" }
