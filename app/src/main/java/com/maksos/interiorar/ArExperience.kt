@@ -14,6 +14,7 @@ import com.google.ar.core.Pose
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.scene.SceneUnderstanding
 import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelInstance
@@ -37,6 +38,7 @@ fun ArExperience(project: KitchenProject, onPlacementSaved: (Float, Float, Float
     var z by remember(project.id) { mutableFloatStateOf(project.offsetZ) }
     var yaw by remember(project.id) { mutableFloatStateOf(project.rotationDegrees) }
     var depthEnabled by remember { mutableStateOf(true) }
+    var depthSupported by remember { mutableStateOf(false) }
     DisposableEffect(anchor) {
         val currentAnchor = anchor
         onDispose { currentAnchor?.detach() }
@@ -48,7 +50,16 @@ fun ArExperience(project: KitchenProject, onPlacementSaved: (Float, Float, Float
             engine = engine,
             modelLoader = modelLoader,
             planeRenderer = anchor == null,
-            depthMode = if (depthEnabled) Config.DepthMode.AUTOMATIC else Config.DepthMode.DISABLED,
+            sceneUnderstanding = SceneUnderstanding(
+                occlusion = depthEnabled && depthSupported,
+                lighting = true,
+                physics = false,
+                planeVisualization = anchor == null
+            ),
+            depthMode = if (depthEnabled && depthSupported) Config.DepthMode.AUTOMATIC else Config.DepthMode.DISABLED,
+            onSessionCreated = { session ->
+                depthSupported = session.isDepthModeSupported(Config.DepthMode.AUTOMATIC)
+            },
             sessionConfiguration = { _, config ->
                 config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL
                 config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
@@ -155,8 +166,8 @@ fun ArExperience(project: KitchenProject, onPlacementSaved: (Float, Float, Float
                 Row(Modifier.padding(horizontal=8.dp),verticalAlignment=Alignment.CenterVertically) {
                     Text("Живой свет: HDR",style=MaterialTheme.typography.bodySmall)
                     Spacer(Modifier.width(8.dp))
-                    Text("Глубина",style=MaterialTheme.typography.bodySmall)
-                    Switch(checked=depthEnabled,onCheckedChange={depthEnabled=it})
+                    Text(if (depthSupported) "Depth Occlusion" else "Depth не поддерживается",style=MaterialTheme.typography.bodySmall)
+                    Switch(checked=depthEnabled && depthSupported,onCheckedChange={depthEnabled=it},enabled=depthSupported)
                 }
             }
         }
