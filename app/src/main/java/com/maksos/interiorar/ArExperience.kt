@@ -6,7 +6,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.google.android.filament.LightManager
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
@@ -37,10 +36,7 @@ fun ArExperience(project: KitchenProject, onPlacementSaved: (Float, Float, Float
     var x by remember(project.id) { mutableFloatStateOf(project.offsetX) }
     var z by remember(project.id) { mutableFloatStateOf(project.offsetZ) }
     var yaw by remember(project.id) { mutableFloatStateOf(project.rotationDegrees) }
-    var liveLighting by remember { mutableStateOf(true) }
     var depthEnabled by remember { mutableStateOf(true) }
-    var lightStrength by remember { mutableFloatStateOf(50000f) }
-    var lastSample by remember { mutableLongStateOf(0L) }
     DisposableEffect(anchor) {
         val currentAnchor = anchor
         onDispose { currentAnchor?.detach() }
@@ -52,24 +48,28 @@ fun ArExperience(project: KitchenProject, onPlacementSaved: (Float, Float, Float
             engine = engine,
             modelLoader = modelLoader,
             planeRenderer = anchor == null,
-            sessionConfiguration = { session, config ->
+            depthMode = if (depthEnabled) Config.DepthMode.AUTOMATIC else Config.DepthMode.DISABLED,
+            sessionConfiguration = { _, config ->
                 config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL
                 config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
-                config.depthMode = if (depthEnabled && session.isDepthModeSupported(Config.DepthMode.AUTOMATIC))
-                    Config.DepthMode.AUTOMATIC else Config.DepthMode.DISABLED
+            },
+            onSessionFailed = { error ->
+                onError(error.message ?: "ARCore не запустился на этом устройстве")
+            },
+            onTrackingFailureChanged = { reason ->
+                if (reason != null && reason != com.google.ar.core.TrackingFailureReason.NONE) {
+                    status = when(reason) {
+                        com.google.ar.core.TrackingFailureReason.INSUFFICIENT_LIGHT -> "Недостаточно света для отслеживания"
+                        com.google.ar.core.TrackingFailureReason.EXCESSIVE_MOTION -> "Двигайте телефон медленнее"
+                        com.google.ar.core.TrackingFailureReason.INSUFFICIENT_FEATURES -> "Наведите камеру на поверхность с деталями"
+                        com.google.ar.core.TrackingFailureReason.CAMERA_UNAVAILABLE -> "Камера недоступна: закройте другие приложения"
+                        else -> "AR-трекинг приостановлен"
+                    }
+                }
             },
             onSessionUpdated = { session, frame ->
                 sessionRef[0] = session
                 frameRef[0] = frame
-                if (liveLighting && frame.timestamp - lastSample > 250_000_000L) {
-                    lastSample = frame.timestamp
-                    val estimate = frame.lightEstimate
-                    if (estimate.state == com.google.ar.core.LightEstimate.State.VALID) {
-                        val rgb = estimate.environmentalHdrMainLightIntensity
-                        val brightness = ((rgb[0] + rgb[1] + rgb[2]) / 3f).coerceIn(.1f, 2f)
-                        lightStrength = lightStrength * .85f + brightness * 50000f * .15f
-                    }
-                }
             },
             onGestureListener = rememberOnGestureListener(
                 onSingleTapConfirmed = { event, _ ->
@@ -122,10 +122,6 @@ fun ArExperience(project: KitchenProject, onPlacementSaved: (Float, Float, Float
                     }
                 }
             }
-            if (liveLighting) LightNode(
-                type = LightManager.Type.SUN,
-                apply = { intensity(lightStrength); castShadows(true) }
-            )
         }
 
         Surface(Modifier.align(Alignment.TopCenter).padding(12.dp), tonalElevation = 5.dp) {
@@ -157,8 +153,7 @@ fun ArExperience(project: KitchenProject, onPlacementSaved: (Float, Float, Float
             }
             Surface(tonalElevation=5.dp,shape=MaterialTheme.shapes.medium) {
                 Row(Modifier.padding(horizontal=8.dp),verticalAlignment=Alignment.CenterVertically) {
-                    Text("Свет",style=MaterialTheme.typography.bodySmall)
-                    Switch(checked=liveLighting,onCheckedChange={liveLighting=it})
+                    Text("Живой свет: HDR",style=MaterialTheme.typography.bodySmall)
                     Spacer(Modifier.width(8.dp))
                     Text("Глубина",style=MaterialTheme.typography.bodySmall)
                     Switch(checked=depthEnabled,onCheckedChange={depthEnabled=it})
