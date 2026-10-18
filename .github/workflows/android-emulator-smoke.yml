@@ -51,7 +51,7 @@ jobs:
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w -r com.maksos.interiorar.test/androidx.test.runner.AndroidJUnitRunner | tee android-instrumentation.txt
-            grep -E '^OK \\([0-9]+ tests?\\)' android-instrumentation.txt
+            grep -Eq '^OK [(][0-9]+ tests?[)]' android-instrumentation.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
