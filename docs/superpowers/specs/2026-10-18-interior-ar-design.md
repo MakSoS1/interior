@@ -1,7 +1,7 @@
 # Interior AR — design specification (v1.0)
 
 **Status:** design approved in conversation on 2026-10-18, corrected for Android 17/16; implementation is NOT started.  
-**Repository:** \`MakSoS1/interior\`  
+**Repository:** `MakSoS1/interior`  
 **Source of truth:** this file. Detailed execution steps: [../plans/2026-10-18-interior-ar-implementation.md](../plans/2026-10-18-interior-ar-implementation.md).
 
 ## 1. Outcome and target users
@@ -23,17 +23,17 @@ References: https://developers.google.com/ar/devices ; https://developers.google
 ## 2. Stack and constraints
 
 - Native Kotlin + Jetpack Compose, SceneView 4.57.0 (Filament renderer), ARCore via SceneView/official ARCore SDK.
-- Android Gradle Plugin 9.3.0, Gradle 9.5.0, JDK 17, compilation SDK API 37. Use stable compatible versions of Kotlin/Compose and pin them in \`gradle/libs.versions.toml\`; AGP 9 uses built-in Kotlin by default — do not double-apply an incompatible Android Kotlin plugin.
-- One Android app module \`:app\`; isolate pure math, model metadata and persistence from AR and Filament.
+- Android Gradle Plugin 9.3.0, Gradle 9.5.0, JDK 17, compilation SDK API 37. Use stable compatible versions of Kotlin/Compose and pin them in `gradle/libs.versions.toml`; AGP 9 uses built-in Kotlin by default — do not double-apply an incompatible Android Kotlin plugin.
+- One Android app module `:app`; isolate pure math, model metadata and persistence from AR and Filament.
 - Entire user flow works **offline** after Google Play Services for AR has been installed and downloaded its device profile. The application does not collect images, transmit camera frames, or require any backend.
-- App ID: \`com.maksos.interiorar\`; user-facing app name: **Interior AR**. UI language Russian for v1.0; accessible controls and reasonable dynamic font sizing.
-- Debug APK must be built and uploaded by GitHub Actions for each PR and \`main\` push.
+- App ID: `com.maksos.interiorar`; user-facing app name: **Interior AR**. UI language Russian for v1.0; accessible controls and reasonable dynamic font sizing.
+- Debug APK must be built and uploaded by GitHub Actions for each PR and `main` push.
 
 ## 3. Import contract: Blender → GLB
 
-- Input \`.glb\` conforming to glTF 2.0, opened through Android Storage Access Framework (\`ACTION_OPEN_DOCUMENT\`) and copied to private app storage; no broad-storage permission.
-- Blender scene models authored in **meters**. glTF uses **Y-up**, Blender works **Z-up**; Blender glTF exporter performs axis conversion. Use a documented origin convention: floor level \`Y=0\`, kitchen local back at \`Z=0\`, right along \`+X\`, forward out from wall along \`+Z\`. Positive depth goes into the room.
-- Preserve authored size at scene root scale **1.0**. Never invoke SceneView helpers that automatically normalize geometry to one unit (e.g. \`scaleToUnits(1f)\`), or silently fix wrong models. If dimensions appear wrong, offer explicit manual import-scale correction with persistent warning.
+- Input `.glb` conforming to glTF 2.0, opened through Android Storage Access Framework (`ACTION_OPEN_DOCUMENT`) and copied to private app storage; no broad-storage permission.
+- Blender scene models authored in **meters**. glTF uses **Y-up**, Blender works **Z-up**; Blender glTF exporter performs axis conversion. Use a documented origin convention: floor level `Y=0`, kitchen local back at `Z=0`, right along `+X`, forward out from wall along `+Z`. Positive depth goes into the room.
+- Preserve authored size at scene root scale **1.0**. Never invoke SceneView helpers that automatically normalize geometry to one unit (e.g. `scaleToUnits(1f)`), or silently fix wrong models. If dimensions appear wrong, offer explicit manual import-scale correction with persistent warning.
 - Calculate actual world-space bounds by traversing scene nodes and transforms; rotate-only transforms do not change linear measurements, but nonuniform scale does. Show meters/mm in preview, and warn on suspicious dimensions.
 - Require finite positions/scales and valid non-empty mesh data; provide actionable error if GLB malformed or unsupported. Suggested import cap 200 MiB on-device and warnings for complex geometry/textures; limits must be user-visible.
 - Persist local copy and SHA-256 to deduplicate. Undo import errors without damaging existing projects.
@@ -41,7 +41,7 @@ References: https://developers.google.com/ar/devices ; https://developers.google
 
 ## 4. Sample kitchen
 
-Generate a deterministic, original Blender scene from a Python script and export \`demo_kitchen.glb\`:
+Generate a deterministic, original Blender scene from a Python script and export `demo_kitchen.glb`:
 - Base drawer cabinet: 600×600×870 mm.
 - Sink cabinet: 800×600×870 mm.
 - Cooktop cabinet: 600×600×870 mm.
@@ -92,7 +92,7 @@ No editor for individual cabinetry geometry in v1. The model is authored in Blen
 
 ## 8. Persistence & privacy
 
-- Persist with Room metadata / JSON transform record and managed \`.glb\` files in app-private storage, atomic writes and schema migrations.
+- Persist with Room metadata / JSON transform record and managed `.glb` files in app-private storage, atomic writes and schema migrations.
 - Stable project ID, model asset checksum/path, original/display name, imported dimensions, explicit import-scale, relative position/rotation, placement orientation flag, material/lighting settings, timestamps.
 - User deleting a project removes its model copy only when no other project references it; prevent path traversal in imported display names.
 - No tracking analytics, cloud assets, raw camera persistence, mandatory accounts, internet permission, or broad filesystem access.
@@ -117,7 +117,7 @@ Out of scope: creating a kitchen in-app; auto room mesh/reconstruction, deleting
 
 ## 11. Architecture boundaries
 
-\`\`\`text
+```text
 Compose UI / ViewModels
   ├── ProjectCatalog → RoomDatabase + PrivateAssetStore
   ├── ImportPipeline → GlbInspector + AssetStore → ModelPreview
@@ -127,7 +127,7 @@ Compose UI / ViewModels
        ├── AnchorAdapter → SceneView/ARCore
        ├── LightingController → ARCore light estimate → Filament
        └── QualityController → dynamic rendering feature gates
-\`\`\`
+```
 
 Every bridge to ARCore, SceneView or Filament must live behind an interface so deterministic behavior is unit-testable without camera hardware. The first implementation task must prove a compatible 4.57.0 SceneView/ARCore build on AGP 9.3.0 and confirm the runtime API surface before specialized lighting code is written.
 
