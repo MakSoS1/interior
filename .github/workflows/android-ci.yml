@@ -40,6 +40,8 @@ jobs:
           python scripts/generate_demo.py --output app/src/main/assets/demo_kitchen.glb
           python scripts/build_reference_kitchen.py --output app/src/main/assets/reference_kitchen.glb --manifest assets/reference_kitchen_manifest.json
           python scripts/build_fridge_module.py --output app/src/main/assets/fridge_opposite_wall.glb --manifest assets/fridge_module_manifest.json
+      - name: Verify exact original photo/video if present
+        run: python scripts/verify_source_media.py --allow-missing
       - name: Test scale and model geometry
         run: python -m unittest discover -s scripts -p 'test_*.py' -v
       - name: Assert generated model exists
