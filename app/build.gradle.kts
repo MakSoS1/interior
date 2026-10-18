@@ -26,5 +26,6 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.12.4")
     implementation("io.github.sceneview:arsceneview:4.57.0")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.17")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
