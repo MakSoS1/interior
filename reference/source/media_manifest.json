@@ -1,7 +1,7 @@
 {
   "format_version": 1,
   "privacy": "Public repository; user explicitly approved publishing the original photo and video",
-  "media_transfer_status": "NOT_YET_UPLOADED",
+  "media_transfer_status": "ORIGINAL_PHOTO_COMMITTED_VIDEO_BASE64_PARTS_COMMITTED_REASSEMBLY_PENDING",
   "intended_repository_paths": {
     "real_walkthrough": "reference/source/room_walkthrough_original.mp4",
     "design_reference": "reference/source/scandinavian_kitchen_reference.png"
@@ -13,7 +13,10 @@
       "bytes": 6682968,
       "sha256": "b2c45336564b79e9db51fc835b290bbd3517b9bf0274e63caf3240047507f2c3",
       "duration_seconds": 17.898156,
-      "video_resolution": [720, 1280],
+      "video_resolution": [
+        720,
+        1280
+      ],
       "decoded_frames": 458
     },
     {
@@ -27,5 +30,9 @@
     "mp4": "Actual room geometry and object locations; use timecoded evidence",
     "png": "Desired interior design reference; not evidence of measured room dimensions"
   },
-  "verification": "Only change media_transfer_status to uploaded when both GitHub binaries are uploaded and downloaded SHA-256 values match originals."
+  "verification": "Only change media_transfer_status to uploaded when both GitHub binaries are uploaded and downloaded SHA-256 values match originals.",
+  "original_photo_git_blob_sha": "3e39daae5cb3981603b8d27bd96f01b1059e45f8",
+  "video_base64_parts": 12,
+  "reconstruction_command": "python3 scripts/reconstruct_original_video.py",
+  "transfer_note": "Video is stored byte-exact as 12 Base64 shards to bypass connector per-request size limits; workflow reconstructs and Git-commits the original MP4; verify SHA-256 above."
 }

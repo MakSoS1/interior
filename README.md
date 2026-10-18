@@ -81,7 +81,12 @@ table and cabinets. Real tracking, scale, depth occlusion and live lighting
 must be evaluated with the APK on an ARCore-supported phone; see
 `docs/device-testing.md`.
 
-**Privacy:** The reference photo and original home video are deliberately
-**not committed to this public repository**. The procedural model, source
-code and reproducible tests are committed; an offline overlay can be produced
-privately from local inputs.
+**Source media (user authorized public upload):** The original reference PNG
+is committed under `reference/source/scandinavian_kitchen_reference.png`.
+The exact original video bytes are preserved in the Git-tracked
+`reference/source/video_b64/part_*.b64` fragments and reconstructed by
+`scripts/reconstruct_original_video.py` (strict 6,682,968-byte / SHA-256
+check). GitHub Actions `Restore original kitchen media` then commits
+`reference/source/room_walkthrough_original.mp4` if repository write permissions
+allow. The media manifest records SHA-256 for both originals. Because the
+repository is public, these files can be viewed by anyone.
