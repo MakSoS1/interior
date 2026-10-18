@@ -1,0 +1,45 @@
+name: Android APK
+on:
+  push:
+    branches: [main, 'feat/**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+      - name: Generate GLB sample
+        run: python3 scripts/generate_demo.py --output app/src/main/assets/demo_kitchen.glb
+      - name: Validate GLB
+        run: python3 -m unittest discover -s scripts -p 'test_*.py' -v
+      - name: Build and test Android application
+        run: gradle --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+      - name: APK SHA256
+        run: sha256sum app/build/outputs/apk/debug/app-debug.apk
+      - name: Upload installable debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: interior-ar-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: interior-ar-reports
+          path: |
+            app/build/test-results/
+            app/build/reports/
+          if-no-files-found: ignore
