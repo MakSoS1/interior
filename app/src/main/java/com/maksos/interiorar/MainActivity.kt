@@ -117,6 +117,30 @@ fun InteriorApp() {
                             }
                         }, enabled = !busy) { Text("Тестовая кухня") }
                     }
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !busy,
+                        onClick = {
+                            busy = true
+                            scope.launch {
+                                try {
+                                    val project = withContext(Dispatchers.IO) { store.createReferenceSample() }
+                                    refresh()
+                                    selected = project
+                                    mode = "preview"
+                                } catch (e: Exception) {
+                                    message = e.message ?: "Не удалось открыть пример кухни"
+                                } finally {
+                                    busy = false
+                                }
+                            }
+                        }
+                    ) { Text("Кухня из твоего референса · остров + 3 стула") }
+                    Text(
+                        "Размеры по фотографии приблизительные. Перед AR-размещением проверьте размеры рулеткой.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     Text(if (arAvailable) "ARCore обнаружен" else "ARCore недоступен / проверяется. 3D-просмотр работает.", style = MaterialTheme.typography.bodySmall)
                     HorizontalDivider()
                     Text("Мои проекты: " + projects.size, style = MaterialTheme.typography.titleMedium)
