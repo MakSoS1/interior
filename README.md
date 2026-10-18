@@ -86,7 +86,6 @@ is committed under `reference/source/scandinavian_kitchen_reference.png`.
 The exact original video bytes are preserved in the Git-tracked
 `reference/source/video_b64/part_*.b64` fragments and reconstructed by
 `scripts/reconstruct_original_video.py` (strict 6,682,968-byte / SHA-256
-check). GitHub Actions `Restore original kitchen media` then commits
-`reference/source/room_walkthrough_original.mp4` if repository write permissions
-allow. The media manifest records SHA-256 for both originals. Because the
+check). GitHub Actions `Restore original kitchen media` **successfully committed**
+`reference/source/room_walkthrough_original.mp4` on 2026-10-18. Both original binaries are now stored publicly at their documented paths. The media manifest records SHA-256 for both originals. Because the
 repository is public, these files can be viewed by anyone.

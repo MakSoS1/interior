@@ -2,7 +2,7 @@
 
 **Source date:** 2026-10-18. **Video:** `2026-10-18 15.40.42.mp4`, 720×1280 portrait, 17.898 s, H.264, approximately 25.59 fps average (458 decoded frames). **Design image:** `ChatGPT Image Oct 18, 2026, 04_08_56 PM.png`.
 
-**Source confidentiality:** the user explicitly authorized publishing both original media in this public GitHub repository on 2026-10-18. Media transfer status must be verified separately; these are the desired target paths: `reference/source/room_walkthrough_original.mp4` and `reference/source/scandinavian_kitchen_reference.png`. Do not claim the binaries are in Git until GitHub confirms their blob SHA and URLs. The photo is a design reference, not evidence of the room's actual geometry.
+**Source confidentiality:** the user explicitly authorized publishing both original media in this public GitHub repository on 2026-10-18. Both originals are now committed at `reference/source/room_walkthrough_original.mp4` and `reference/source/scandinavian_kitchen_reference.png`; GitHub Actions verified the MP4 against the byte-exact original SHA-256 in run [39136096379](https://github.com/MakSoS1/interior/actions/runs/39136096379). The photo is a design reference, not evidence of the room's actual geometry.
 
 ## 1. What is visible in the actual video
 
@@ -44,7 +44,7 @@ Modeling coordinates in metres; +Y is up, +X is to the right along the sink/base
 - Exclude all background walls/window geometry from GLB: real video supplies them
 - Confirm clearance to the glass door and swings before any cabinetry purchase
 
-**Critical limitation:** the current Android AR view uses a **single rigid root anchor** per imported GLB. Consequently, if a model combines opposite-wall refrigerator and island with guessed relative separation, it will not automatically align both in the real room. The defensible workflow is to (a) measure room and use a correct common model frame, or (b) implement multiple independent modular anchors. Do not interpret current two-point placement as room-mapping.
+**Current placement implementation:** the main kitchen assembly and opposite-wall refrigerator now have **separate ARCore anchors** with independent two-point floor alignment. This avoids assuming the refrigerator is on the kitchen-window wall. Relative real-world anchor locations are **not yet persistently relocalized after a process restart**; after reopening the AR session, calibrate both locations again. Two-point placement is not room mapping, and a physical survey remains necessary.
 
 ### Island utilities and door circulation
 
@@ -84,6 +84,6 @@ The offline video overlay is a *visual proof of concept* that tracks 2D features
 
 ## 7. Media access
 
-Publication target files are `reference/source/room_walkthrough_original.mp4` and `reference/source/scandinavian_kitchen_reference.png`. Raw private-stage files remain attached to the ChatGPT conversation until GitHub binary upload is confirmed. A named target path is not proof of upload.
+**Verified public original files:** [`reference/source/room_walkthrough_original.mp4`](../reference/source/room_walkthrough_original.mp4) and [`reference/source/scandinavian_kitchen_reference.png`](../reference/source/scandinavian_kitchen_reference.png). The media manifest contains expected bytes, original SHA-256 and the successful reconstruction run. The MP4 was reassembled from lossless Git fragments and committed by GitHub Actions after exact verification.
 
 **Original photo copyright/attribution:** supplied by user as intended design reference; do not state that it is a photograph of the actual room. The room recording was shot by the user.
