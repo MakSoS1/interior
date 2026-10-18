@@ -7,7 +7,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
-import java.security.MessageDigest
 import java.util.UUID
 
 data class KitchenProject(
@@ -74,7 +73,7 @@ class ProjectStore(private val context: Context) {
                 }
             } ?: throw IllegalArgumentException("Не удалось открыть файл")
             val bounds = GlbInspector.inspect(file)
-            val sha = MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
+            val sha = AssetDigest.sha256(file)
             val destination = File(assets, "$sha.glb")
             if (!destination.exists()) {
                 if (!file.renameTo(destination)) throw IllegalStateException("Не удалось сохранить GLB")
