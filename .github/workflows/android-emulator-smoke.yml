@@ -30,6 +30,7 @@ jobs:
         run: |
           python3 scripts/generate_demo.py --output app/src/main/assets/demo_kitchen.glb
           python scripts/build_reference_kitchen.py --output app/src/main/assets/reference_kitchen.glb --manifest assets/reference_kitchen_manifest.json
+          python scripts/build_fridge_module.py --output app/src/main/assets/fridge_opposite_wall.glb --manifest assets/fridge_module_manifest.json
       - name: Install compile SDK Android 17 before prebuild
         run: |
           SDKMANAGER=$(find /usr/local/lib/android/sdk/cmdline-tools -path '*/bin/sdkmanager' | head -n 1)
