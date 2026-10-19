@@ -56,6 +56,9 @@ fun AssetPreview(asset:KitchenProject) {
         Box(Modifier.fillMaxSize()) {
             SceneView(
                 modifier=Modifier.fillMaxSize(),
+                // TextureView composites within the Activity rather than a separate
+                // SurfaceView layer; makes Filament pixels visible to frame capture.
+                surfaceType=SurfaceType.TextureSurface,
                 engine=engine,
                 modelLoader=loader,
                 autoCenterContent=true,
