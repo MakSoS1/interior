@@ -33,7 +33,7 @@ class RoomMathTest {
 @Config(sdk=[35])
 class LayoutPersistenceTest {
     @Test fun roomLocalLayoutAndLightSettingsSurviveReload() {
-        val context=RuntimeEnvironment.getApplication<android.app.Application>();val store=RoomLayoutStore(context)
+        val context=RuntimeEnvironment.getApplication();val store=RoomLayoutStore(context)
         val room=RoomLayout(listOf(RoomItem(assetId="one",x=1f,y=.9f,z=2f,yaw=45f,placed=true)),LightSettings(true,-.7f))
         store.save("test-room",room)
         assertEquals(room,RoomLayoutStore(context).load("test-room",emptyList()))
@@ -43,7 +43,7 @@ class LayoutPersistenceTest {
 @Config(sdk=[35])
 class ArchivedAssetTest {
     @Test fun hidingALibraryItemDoesNotBreakAnExistingRoom() {
-        val context=RuntimeEnvironment.getApplication<android.app.Application>();val store=ProjectStore(context)
+        val context=RuntimeEnvironment.getApplication();val store=ProjectStore(context)
         val asset=store.createSample();val room=RoomLayout(listOf(RoomItem(assetId=asset.id,placed=true)))
         val layouts=RoomLayoutStore(context);layouts.save("archive-test",room);store.delete(asset)
         assertFalse(store.all().any {it.id==asset.id})
