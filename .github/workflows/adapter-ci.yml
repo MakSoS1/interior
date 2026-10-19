@@ -5,7 +5,7 @@ on:
     paths-ignore: ['.github/workflows/adapter-development.yml']
   workflow_dispatch:
 concurrency:
-  group: adapter-${{ github.ref }}
+  group: adapter-diagnostics-${{ github.ref }}
   cancel-in-progress: true
 permissions:
   contents: read
