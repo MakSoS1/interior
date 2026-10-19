@@ -90,7 +90,10 @@ fun InteriorApp(){
                     item{Text("Размеры примера оценочные. Перед заказом мебели нужны замеры.",style=MaterialTheme.typography.bodySmall)}
                     item{Text(if(checking)"Проверка ARCore…" else if(arAvailable)"ARCore: поддержка обнаружена" else "ARCore недоступен — можно использовать 3D",style=MaterialTheme.typography.labelSmall)}
                     item{HorizontalDivider();Text("Библиотека: "+projects.size,style=MaterialTheme.typography.titleMedium)}
-                    items(projects,key={it.id}){asset ->Card(onClick={selected=asset;mode="preview"},modifier=Modifier.fillMaxWidth()){
+                    items(projects,key={it.id}){asset ->Card(onClick={
+                        android.util.Log.i("InteriorNav","Opening selected asset ${asset.id} from gallery")
+                        selected=asset;mode="preview"
+                    },modifier=Modifier.fillMaxWidth()){
                         Row(Modifier.padding(12.dp),verticalAlignment=Alignment.CenterVertically){
                             Column(Modifier.weight(1f)){Text(asset.name,fontWeight=FontWeight.SemiBold);Text(asset.dimensions.label(),style=MaterialTheme.typography.bodySmall)}
                             TextButton(onClick={toDelete=asset}){Text("Удалить")}
