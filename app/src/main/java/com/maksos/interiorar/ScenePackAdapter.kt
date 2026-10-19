@@ -6,6 +6,7 @@ import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.FileOutputStream
+import java.io.DataInputStream
 import java.util.UUID
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -33,14 +34,17 @@ object ScenePackAdapter {
     }
     fun importFile(input:File,title:String,assets:File):ArDocument {
         assets.mkdirs()
-        val signature=input.inputStream().use { it.readNBytes(4) }
+        require(input.length() in 4..MAX_TOTAL_BYTES) { "Файл пуст или превышает 512 МБ" }
+        val signature=ByteArray(4)
+        DataInputStream(input.inputStream()).use { it.readFully(signature) }
         return if(signature.contentEquals(byteArrayOf(0x67,0x6c,0x54,0x46))) importGlb(input,title,assets)
         else {
-            require(signature.size==4 && signature[0]==0x50.toByte() && signature[1]==0x4b.toByte()) { "Нужен .glb или .interior.zip" }
+            require(signature[0]==0x50.toByte() && signature[1]==0x4b.toByte()) { "Нужен .glb или .interior.zip" }
             importPack(input,assets)
         }
     }
     fun importGlb(input:File,title:String,assets:File):ArDocument {
+        assets.mkdirs()
         val bounds=GlbBounds.inspect(input)
         val sha=AssetDigest.sha256(input)
         val dest=File(assets,"$sha.glb")
@@ -99,7 +103,6 @@ object ScenePackAdapter {
             }
             require(names==used+"interior.json") { "В пакете есть неиспользуемые файлы" }
             val title=manifest.getString("name");val light=LightingSettings.parse(manifest.optJSONObject("lighting"))
-            // Validate the document BEFORE publishing its directory.
             val candidate=ArDocument(title=title,groups=parsed,lighting=light)
             val dest=File(assets,"pack-"+candidate.id)
             require(stage.renameTo(dest)) { "Не удалось установить пакет" };installed=dest
@@ -109,12 +112,17 @@ object ScenePackAdapter {
         } finally { stage.deleteRecursively() }
     }
     fun export(document:ArDocument,output:OutputStream) {
+        var total=0L
+        val checked=HashSet<String>()
+        document.groups.forEach { g ->
+            val file=File(g.file);require(file.isFile) { "Модель отсутствует: ${g.label}" }
+            if(checked.add(file.canonicalPath)) {GlbBounds.inspect(file);total+=file.length()}
+        }
+        require(total<=MAX_TOTAL_BYTES-1024*1024) { "Пакет слишком большой" }
         ZipOutputStream(output.buffered()).use { zip ->
             val written=HashSet<String>();val groups=JSONArray()
             document.groups.forEachIndexed { index,g ->
-                val file=File(g.file);require(file.isFile) { "Исходная модель отсутствует: ${g.label}" }
-                GlbBounds.inspect(file)
-                val sha=AssetDigest.sha256(file);val asset="models/$sha.glb"
+                val file=File(g.file);val sha=AssetDigest.sha256(file);val asset="models/$sha.glb"
                 if(written.add(asset)) {
                     zip.putNextEntry(ZipEntry(asset).apply { time=0L })
                     file.inputStream().use { copyLimited(it,zip,GlbBounds.MAX_BYTES) };zip.closeEntry()
