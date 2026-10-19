@@ -20,15 +20,15 @@ jobs:
           python-version: '3.12'
       - name: Adapter unit tests
         run: python -m unittest discover -s adapter/tests -p 'test_*.py' -v
-      - name: Install Blender for a real export and import roundtrip
+      - name: Install Blender and its system Python dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends blender
-          blender --version
+          sudo apt-get install -y --no-install-recommends blender python3-numpy
+          env -u LD_LIBRARY_PATH -u PYTHONHOME -u PYTHONPATH blender --version
       - name: Real Blender groups and metric unit roundtrip
         run: |
           mkdir -p build/adapter
-          blender -b --factory-startup --python-exit-code 1 --python adapter/tests/blender_roundtrip.py -- "$PWD/build/adapter"
+          env -u LD_LIBRARY_PATH -u PYTHONHOME -u PYTHONPATH blender -b --factory-startup --python-exit-code 1 --python adapter/tests/blender_roundtrip.py -- "$PWD/build/adapter"
           test -s build/adapter/two-groups.interior.zip
           test -s build/adapter/blender-roundtrip.json
       - name: Package installable addon and complete source snapshot
@@ -131,7 +131,7 @@ jobs:
             adb logcat -c
             adb shell am instrument -w -r -e class com.maksos.interiorar.AndroidSmokeTest com.maksos.interiorar.test/androidx.test.runner.AndroidJUnitRunner > evidence/instrumentation.txt 2>&1
             adb logcat -d > evidence/logcat.txt
-            adb pull /sdcard/Android/data/com.maksos.interiorar/files/qa evidence/qa || true
+            adb pull /sdcard/Android/data/com.maksos/interiorar/files/qa evidence/qa || adb pull /sdcard/Android/data/com.maksos.interiorar/files/qa evidence/qa || true
             cat evidence/instrumentation.txt
             grep -q 'OK (2 tests)' evidence/instrumentation.txt
       - uses: actions/upload-artifact@v4
