@@ -1,0 +1,45 @@
+name: Room Video Registration v4
+on:
+  push:
+    branches: ['research/video-room-registration-v4']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: room-video-v4
+  cancel-in-progress: true
+jobs:
+  reconstruct:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      OMP_NUM_THREADS: '3'
+      OPENBLAS_NUM_THREADS: '3'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install reconstruction dependencies
+        run: |
+          python -m pip install pycolmap opencv-python-headless numpy
+          python -m pip freeze > environment-sfm.txt
+      - name: Download matching Python wheels for offline inspection
+        run: python -m pip download --no-deps pycolmap -d build/sfm-wheels
+      - name: Export offline Python bindings
+        uses: actions/upload-artifact@v4
+        with:
+          name: sfm-python-bindings
+          path: build/sfm-wheels/
+      - name: Reconstruct shared landmarks and camera poses
+        run: python -u scripts/reconstruct_video_v4.py > reconstruction-v4.log 2>&1
+      - name: Export reconstruction, not a claimed AR screen recording
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: room-video-sfm-v4
+          path: |
+            build/video_registration_v4/
+            reconstruction-v4.log
+            environment-sfm.txt
+          retention-days: 7
