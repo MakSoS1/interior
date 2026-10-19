@@ -1,0 +1,28 @@
+name: Asset Adapter Development
+on:
+  push:
+    branches: ['feature/asset-adapter-lighting-v3']
+    paths: ['.github/workflows/adapter-development.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Snapshot exact source and pinned renderer sources
+        run: |
+          mkdir -p /tmp/adapter-snapshot/renderer
+          git archive --format=zip HEAD -o /tmp/adapter-snapshot/interior-source.zip
+          for module in sceneview arsceneview; do
+            curl --retry 3 --fail --location "https://repo.maven.apache.org/maven2/io/github/sceneview/$module/4.57.0/$module-4.57.0-sources.jar" -o "/tmp/adapter-snapshot/renderer/$module-sources.jar"
+            curl --retry 3 --fail --location "https://repo.maven.apache.org/maven2/io/github/sceneview/$module/4.57.0/$module-4.57.0.pom" -o "/tmp/adapter-snapshot/renderer/$module.pom"
+          done
+          git rev-parse HEAD > /tmp/adapter-snapshot/source-commit.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: adapter-development-snapshot
+          path: /tmp/adapter-snapshot/
+          retention-days: 7
