@@ -9,14 +9,23 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
 
-/** All methods run on the IO dispatcher in the UI. Camera images are never persisted. */
+/** UI dispatches all storage work to IO; legacy files remain untouched during migration. */
 class SceneCatalog(private val context:Context) {
     private val database=AtomicFile(File(context.filesDir,"ar_documents_v3.json"))
     private val assets=File(context.filesDir,"ar_assets_v3").apply { mkdirs() }
     @Synchronized fun list():List<ArDocument> {
         if(!database.baseFile.exists()) {
             val legacy=ProjectStore(context).all().map { old ->
-                val group=if(old.modelUri.contains("reference_kitchen")) referenceGroups() else {
+                val group=if(old.modelUri.contains("reference_kitchen")) {
+                    referenceGroups().map {g->
+                        val a=when(g.id) {
+                            "island"->old.islandAdjust
+                            "fridge"->old.fridgeAdjust
+                            else->ModuleAdjustment(old.offsetX,old.offsetZ,old.rotationDegrees)
+                        }
+                        g.copy(transform=GroupTransform(a.xMeters,0f,a.zMeters,a.yawDegrees))
+                    }
+                } else {
                     val path=Uri.parse(old.modelUri).path ?: old.modelUri
                     val bounds=GlbBounds.inspect(File(path))
                     listOf(ArGroup("object",old.name,path,bounds.dimensions,bounds.minimum,
@@ -52,7 +61,6 @@ class SceneCatalog(private val context:Context) {
     fun importFile(file:File,name:String):ArDocument=put(ScenePackAdapter.importFile(file,name,assets))
     @Synchronized fun append(id:String,uri:Uri):ArDocument {
         val original=list().first { it.id==id }
-        // Parse first; no catalog side effect until the whole merged document is valid.
         val tmp=File.createTempFile("addition-",".bin",context.cacheDir)
         try {
             context.contentResolver.openInputStream(uri)?.use { src -> tmp.outputStream().use { ScenePackAdapter.copyLimited(src,it,ScenePackAdapter.MAX_TOTAL_BYTES) } } ?: error("Файл недоступен")
@@ -70,7 +78,6 @@ class SceneCatalog(private val context:Context) {
     }
     private fun builtin(fileName:String,label:String,id:String,pivot:Point3?=null):ArGroup {
         val out=File(assets,fileName)
-        // Version the builtin by SHA rather than reusing a stale file from an old APK.
         val temp=File.createTempFile("builtin-",".glb",assets)
         try {
             context.assets.open(fileName).use { src -> temp.outputStream().use { src.copyTo(it) } }
