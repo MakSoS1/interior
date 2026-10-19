@@ -1,0 +1,2 @@
+integration-01
+Expected: generic GLB/ZIP importer, runtime light smoothing, full Kotlin/Python suite and actual installed APK instrumentation.
