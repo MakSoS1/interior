@@ -2,8 +2,9 @@ package com.maksos.interiorar
 
 import kotlin.math.exp
 import kotlin.math.ln
+import kotlin.math.pow
 
-/** No multiplication by previous-frame gain: output converges to a target, not to black. */
+/** No multiplication by previous-frame gain: converges to target, not to black. */
 class ExposureSmoother(initial: Float = .82f, private val tauSeconds: Float = .8f) {
     var value: Float = initial.coerceIn(.05f,4f)
         private set
@@ -18,12 +19,12 @@ class ExposureSmoother(initial: Float = .82f, private val tauSeconds: Float = .8
     }
 }
 
-/** Robust camera-luma estimate: ignore extreme windows and deep black borders. */
+/** Ignore extreme windows and black borders, not a drifting screen-space texture. */
 object LumaMatching {
     fun gain(samples: FloatArray): Float {
         val valid=samples.filter { it.isFinite() && it in .04f.. .88f }.sorted()
         if(valid.size<16) return 1f
         val median=valid[valid.size/2]
-        return kotlin.math.pow((median/.45f).toDouble(),.18).toFloat().coerceIn(.72f,1.03f)
+        return (median/.45f).toDouble().pow(.18).toFloat().coerceIn(.72f,1.03f)
     }
 }
