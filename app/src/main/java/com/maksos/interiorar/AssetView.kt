@@ -52,8 +52,9 @@ fun AssetPreview(asset:KitchenProject) {
         Box(Modifier.fillMaxSize()) {
             SceneView(modifier=Modifier.fillMaxSize(),engine=engine,modelLoader=loader,
                 autoCenterContent=true,autoFitContent=true,
-                cameraManipulator=rememberCameraManipulator(orbitRadius=(maxOf(asset.dimensions.width,
-                    asset.dimensions.height,asset.dimensions.depth)*1.9f).coerceIn(1.3f,20f))) {
+                // autoFitContent controls the camera only when no orbit manipulator owns it.
+                // Static framing first; restoring orbit with explicit target is a separate step.
+                cameraManipulator=null) {
                 (loaded as? AssetLoad.Ready)?.model?.let {ModelNode(modelInstance=it,autoAnimate=false)}
             }
             when(loaded) {
