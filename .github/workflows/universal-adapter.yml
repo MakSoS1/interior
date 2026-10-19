@@ -13,7 +13,7 @@ permissions:
   contents: read
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
@@ -39,19 +39,22 @@ jobs:
           python scripts/split_reference_kitchen.py --output-dir app/src/main/assets --manifest assets/placement_groups_manifest.json
           python scripts/build_fridge_module.py --output app/src/main/assets/fridge_opposite_wall.glb --manifest assets/fridge_module_manifest.json
           python -m unittest discover -s scripts -p 'test_*.py' -v
-          if [ -f tools/test_adapter.py ]; then python -m unittest discover -s tools -p 'test_*.py' -v; fi
-          if [ -f tools/make_demo_pack.py ]; then python tools/make_demo_pack.py; fi
+          python -m unittest discover -s tools -p 'test_*.py' -v
+          python tools/make_demo_pack.py
       - name: Test and compile APKs
         run: gradle --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest
-      - name: Build identity
+      - name: Build identity and signature verification
         run: |
           mkdir -p deliver
           cp app/build/outputs/apk/debug/app-debug.apk deliver/Interior-AR-Adapter.apk
           cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk deliver/Interior-AR-Adapter-test.apk
           sha256sum deliver/*.apk > deliver/SHA256SUMS.txt
           git rev-parse HEAD > deliver/COMMIT.txt
-          cp -r tools deliver/adapter-tools 2>/dev/null || true
-          cp -r dist/. deliver/ 2>/dev/null || true
+          /usr/local/lib/android/sdk/build-tools/36.0.0/apksigner verify --print-certs deliver/Interior-AR-Adapter.apk > deliver/SIGNATURE.txt
+          /usr/local/lib/android/sdk/build-tools/36.0.0/aapt dump badging deliver/Interior-AR-Adapter.apk > deliver/APK_METADATA.txt
+          cp -r tools deliver/adapter-tools
+          cp -r dist/. deliver/
+          cp docs/portable-adapter-and-lighting.md deliver/README.ru.md
       - uses: actions/upload-artifact@v4
         with:
           name: interior-adapter-delivery
@@ -65,10 +68,34 @@ jobs:
             app/build/test-results/
             app/build/reports/
           if-no-files-found: ignore
+  blender:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install distro Blender and record exact version
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y blender
+          mkdir -p blender-results
+          blender --version > blender-results/version.txt
+      - name: Export two real Blender collections
+        run: |
+          blender --background --factory-startup --python tools/blender_smoke.py > blender-results/export.txt 2>&1
+          cat blender-results/export.txt
+          grep BLENDER_ADAPTER_SMOKE_OK blender-results/export.txt
+          python3 tools/interior_adapter.py validate dist/blender_smoke.interior.zip
+          cp dist/blender_smoke.interior.zip blender-results/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: interior-adapter-blender
+          path: blender-results/
+          if-no-files-found: ignore
   emulator:
     needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -86,18 +113,8 @@ jobs:
           target: google_apis
           profile: pixel_6
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            mkdir -p emulator-results
-            adb install -r deliver/Interior-AR-Adapter.apk
-            adb install -r deliver/Interior-AR-Adapter-test.apk
-            adb logcat -c
-            adb shell am instrument -w -r com.maksos.interiorar.test/androidx.test.runner.AndroidJUnitRunner > emulator-results/instrumentation.txt
-            adb logcat -d > emulator-results/logcat.txt
-            adb exec-out screencap -p > emulator-results/screen.png
-            cat emulator-results/instrumentation.txt
-            grep -E 'OK \([1-9][0-9]* tests?\)' emulator-results/instrumentation.txt
-            ! grep -E 'FAILURES|INSTRUMENTATION_FAILED|Process crashed' emulator-results/instrumentation.txt
+          emulator-options: -no-window -gpu software -noaudio -no-boot-anim -camera-back none -no-metrics -no-snapshot
+          script: bash deliver/adapter-tools/run_apk_smoke.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
