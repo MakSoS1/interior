@@ -120,17 +120,7 @@ jobs:
           emulator-boot-timeout: 900
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          script: |
-            mkdir -p evidence
-            (cd apk/debug && sha256sum -c SHA256SUMS.txt)
-            adb install apk/debug/app-debug.apk
-            adb install apk/androidTest/debug/app-debug-androidTest.apk
-            adb logcat -c
-            adb shell am instrument -w -r -e class com.maksos.interiorar.AndroidSmokeTest com.maksos.interiorar.test/androidx.test.runner.AndroidJUnitRunner > evidence/instrumentation.txt 2>&1
-            adb logcat -d > evidence/logcat.txt
-            adb pull /sdcard/Android/data/com.maksos/interiorar/files/qa evidence/qa || adb pull /sdcard/Android/data/com.maksos.interiorar/files/qa evidence/qa || true
-            cat evidence/instrumentation.txt
-            grep -q 'OK (2 tests)' evidence/instrumentation.txt
+          script: bash .github/scripts/adapter-emulator-smoke.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
