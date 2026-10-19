@@ -1,75 +1,92 @@
 package com.maksos.interiorar
 
-import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.test.platform.app.InstrumentationRegistry
-import org.junit.Rule
-import org.junit.Test
-import org.junit.Assert.*
-import java.io.File
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.test.core.app.ActivityScenario
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
+import org.junit.Assert.*
+import org.junit.Test
+import org.junit.runner.RunWith
+import java.io.File
 
-/** These run on the installed APK. Native 3D preview is exercised, not ignored. */
+/**
+ * Device-level smoke test: no Compose test-clock / Espresso idling dependency.
+ * Filament continuously renders, so Compose idle waiting is not reliable.
+ */
+@RunWith(AndroidJUnit4::class)
 class AndroidSmokeTest {
-    @get:Rule val compose=createAndroidComposeRule<MainActivity>()
-    @Test fun galleryStartsWithoutCameraPermission() {
-        compose.onNodeWithText("Загрузить GLB").assertIsDisplayed()
-        compose.onNodeWithText("Тестовая кухня").assertIsDisplayed()
-        compose.onNodeWithText("Кухня из твоего референса · остров + 3 стула").assertIsDisplayed()
-    }
-    @Test fun blenderPackageLoadsInActualNativePreviewAndReturnsToLibrary() {
-        val instrumentation=InstrumentationRegistry.getInstrumentation()
-        val context=instrumentation.targetContext
-        val zip=File(context.cacheDir,"adapter-test.zip")
-        context.assets.open("adapter_demo.interior.zip").use {input -> zip.outputStream().use {input.copyTo(it)}}
-        val store=ProjectStore(context)
-        val assets=store.importFile(zip,"Blender test");zip.delete()
-        assertEquals(2,assets.size)
-        assertTrue(assets.all {it.dimensions.height in .59f..1.01f})
-        compose.activityRule.scenario.recreate()
-        val asset=assets.first()
-        // Filament renders continuously; Compose-Espresso idling is therefore intentionally
-        // not used while the native 3D preview is active.
-        val device=UiDevice.getInstance(instrumentation)
-        // Android accessibility exposes a non-clickable text child inside a clickable Card.
-        // Click its clickable ancestor, not the text node's ACTION_CLICK.
-        val tileText=device.wait(Until.findObject(By.text(asset.name)),20_000)
-            ?: error("Imported model is not visible in library")
-        val tileCard=generateSequence(tileText){it.parent}.firstOrNull {it.isClickable}
-            ?: error("Imported model is not contained in a clickable library Card")
-        tileCard.click()
-        val routeOpened=device.wait(Until.hasObject(By.text("Разместить в AR · 1:1")),20_000)
-        if(!routeOpened) {
-            val diag=File(context.getExternalFilesDir(null),"qa").apply {mkdirs()}
-            device.takeScreenshot(File(diag,"navigation-failed.png"))
-            device.dumpWindowHierarchy(File(diag,"navigation-failed.xml"))
-            android.util.Log.e("InteriorARTest","Preview route was not accessible; saved screenshot and UI tree")
+    private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
+    private val device get() = UiDevice.getInstance(instrumentation)
+
+    @Test
+    fun galleryStartsWithoutCameraPermission() {
+        ActivityScenario.launch(MainActivity::class.java).use {
+            assertTrue("GLB import is missing", device.wait(Until.hasObject(By.text("Загрузить GLB")), 20_000))
+            assertTrue("Test kitchen is missing", device.hasObject(By.text("Тестовая кухня")))
+            assertTrue("Reference kitchen is missing",
+                device.hasObject(By.text("Кухня из твоего референса · остров + 3 стула")))
         }
-        assertTrue("Native preview route did not open (see navigation-failed.png)",routeOpened)
-        assertTrue("GLB must load in native Filament renderer",
-            device.wait(Until.hasObject(By.text("Модель загружена")),40_000))
-        Thread.sleep(1500)
-        val dir=File(context.getExternalFilesDir(null),"qa").apply {mkdirs()}
-        val capture=File(dir,"blender-native-preview.png")
-        assertTrue("Screenshot of native scene failed",device.takeScreenshot(capture))
-        val image=BitmapFactory.decodeFile(capture.path)
-            ?: error("Screenshot could not be decoded")
-        val colors=HashSet<Int>()
-        for(y in image.height/5 until image.height*2/3 step 7)
-            for(x in image.width/5 until image.width*4/5 step 7)colors.add(image.getPixel(x,y))
-        assertTrue("3D surface unexpectedly uniform",colors.size>20)
-        File(dir,"preview-check.txt").writeText(
-            "model="+asset.name+"\\ndimensions="+asset.dimensions.label()+"\\ncolors="+colors.size
-        )
-        image.recycle()
-        device.pressBack()
-        assertTrue("Back navigation did not return to the library",
-            device.wait(Until.hasObject(By.text("Загрузить GLB")),15_000))
-        // Existing layout keeps archived asset references resolvable.
-        assets.forEach {store.delete(it)}
+    }
+
+    @Test
+    fun importedBlenderGroupDisplaysInNative3DPreview() {
+        val context=instrumentation.targetContext
+        val pack=File(context.cacheDir,"android-blender-qa.interior.zip")
+        context.assets.open("adapter_demo.interior.zip").use { input ->
+            pack.outputStream().use { output -> input.copyTo(output) }
+        }
+        val store=ProjectStore(context)
+        val assets=try { store.importFile(pack,"Blender QA") } finally { pack.delete() }
+        assertEquals("Expected two independent furniture groups",2,assets.size)
+        assertTrue("Metric model dimensions incorrect",
+            assets.all { it.dimensions.height in .59f..1.01f })
+        val selected=assets.first()
+        val directory=File(context.getExternalFilesDir(null),"qa").apply {mkdirs()}
+
+        ActivityScenario.launch(MainActivity::class.java).use {
+            assertTrue("Gallery not visible",
+                device.wait(Until.hasObject(By.text("Загрузить GLB")),20_000))
+            val tile=device.wait(Until.findObject(By.text(selected.name)),20_000)
+                ?: error("Imported Blender group not listed: "+selected.name)
+            val rectangle=tile.visibleBounds
+            assertTrue("Imported group is off screen",rectangle.width()>0 && rectangle.height()>0)
+            // Actual pointer coordinates go through the Card's click dispatch rather than
+            // accessibility action on its nonclickable child text.
+            device.click(rectangle.centerX(),rectangle.centerY())
+
+            val preview=device.wait(Until.hasObject(By.text("Разместить в AR · 1:1")),35_000)
+            if(!preview) {
+                device.takeScreenshot(File(directory,"navigation-failed.png"))
+                device.dumpWindowHierarchy(File(directory,"navigation-failed.xml"))
+            }
+            assertTrue("Preview screen didn't open",preview)
+            val loaded=device.wait(Until.hasObject(By.text("Модель загружена")),45_000)
+            if(!loaded) {
+                device.takeScreenshot(File(directory,"render-failed.png"))
+                device.dumpWindowHierarchy(File(directory,"render-failed.xml"))
+            }
+            assertTrue("GLB didn't load in Filament scene",loaded)
+            Thread.sleep(1400)
+            val screenshot=File(directory,"blender-native-preview.png")
+            assertTrue("Screenshot could not be taken",device.takeScreenshot(screenshot))
+            val bitmap=BitmapFactory.decodeFile(screenshot.path)
+                ?: error("Native-renderer screenshot couldn't be decoded")
+            val sampled=HashSet<Int>()
+            for(y in bitmap.height/5 until bitmap.height*2/3 step 7)
+                for(x in bitmap.width/5 until bitmap.width*4/5 step 7)
+                    sampled.add(bitmap.getPixel(x,y))
+            File(directory,"preview-check.txt").writeText(
+                "asset="+selected.name+"\ndimensions="+selected.dimensions.label()+
+                "\nuniqueColors="+sampled.size+"\n")
+            bitmap.recycle()
+            assertTrue("Native 3D preview appears uniform", sampled.size>20)
+            device.pressBack()
+            assertTrue("Back navigation failed",
+                device.wait(Until.hasObject(By.text("Загрузить GLB")),15_000))
+        }
+        for(a in assets) store.delete(a)
     }
 }
