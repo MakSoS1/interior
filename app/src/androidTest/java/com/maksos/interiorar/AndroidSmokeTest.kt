@@ -35,9 +35,9 @@ class AndroidSmokeTest {
         // Filament renders continuously; Compose-Espresso idling is therefore intentionally
         // not used while the native 3D preview is active.
         val device=UiDevice.getInstance(instrumentation)
-        val libraryTile=device.wait(Until.findObject(By.text(asset.name)),20_000)
-        assertNotNull("Imported furniture must be visible in the library",libraryTile)
-        libraryTile!!.click()
+        // Before entering the continuously rendered scene, Compose is idle.
+        // Use its clickable Card semantics; the child TextView itself is NOT clickable.
+        compose.onNodeWithText(asset.name).performScrollTo().performClick()
         assertTrue("Native preview route did not open",
             device.wait(Until.hasObject(By.text("Разместить в AR · 1:1")),30_000))
         assertTrue("GLB must load in native Filament renderer",
