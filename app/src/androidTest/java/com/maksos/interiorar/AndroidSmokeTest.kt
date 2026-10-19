@@ -38,8 +38,14 @@ class AndroidSmokeTest {
         // Before entering the continuously rendered scene, Compose is idle.
         // Use its clickable Card semantics; the child TextView itself is NOT clickable.
         compose.onNodeWithText(asset.name).performScrollTo().performClick()
-        assertTrue("Native preview route did not open",
-            device.wait(Until.hasObject(By.text("Разместить в AR · 1:1")),30_000))
+        val routeOpened=device.wait(Until.hasObject(By.text("Разместить в AR · 1:1")),20_000)
+        if(!routeOpened) {
+            val diag=File(context.getExternalFilesDir(null),"qa").apply {mkdirs()}
+            device.takeScreenshot(File(diag,"navigation-failed.png"))
+            device.dumpWindowHierarchy(File(diag,"navigation-failed.xml"))
+            android.util.Log.e("InteriorARTest","Preview route was not accessible; saved screenshot and UI tree")
+        }
+        assertTrue("Native preview route did not open (see navigation-failed.png)",routeOpened)
         assertTrue("GLB must load in native Filament renderer",
             device.wait(Until.hasObject(By.text("Модель загружена")),40_000))
         Thread.sleep(1500)
