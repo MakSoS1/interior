@@ -58,6 +58,7 @@ fun InteriorApp() {
     var appendId by remember{mutableStateOf<String?>(null)}
     var deleteProject by remember{mutableStateOf<ArDocument?>(null)}
     var removeGroup by remember{mutableStateOf<ArGroup?>(null)}
+    var editGroup by remember{mutableStateOf<ArGroup?>(null)}
     val writes=remember{Channel<()->Unit>(Channel.UNLIMITED)}
     LaunchedEffect(Unit) {
         try {documents=withContext(Dispatchers.IO){catalog.list()}} catch(e:Exception){error="Не удалось прочитать проекты: "+e.message}
@@ -85,7 +86,7 @@ fun InteriorApp() {
         val doc=exportDoc
         if(uri!=null && doc!=null) {
             busy=true;scope.launch {
-                try {withContext(Dispatchers.IO){context.contentResolver.openOutputStream(uri)?.use { ScenePackAdapter.export(doc,it) } ?: error("Файл не открыт")};error="Пакет сохранён: модели, группы и настройки света"}
+                try {withContext(Dispatchers.IO){context.contentResolver.openOutputStream(uri)?.use { ScenePackAdapter.export(doc,it) } ?: throw IllegalStateException("Файл не открыт")};error="Пакет сохранён: модели, группы и настройки света"}
                 catch(e:Exception){error=e.message?:"Ошибка экспорта"}finally{busy=false}
             }
         }
@@ -139,8 +140,9 @@ fun InteriorApp() {
                         Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                             Text("Размер: "+group.physicalDimensions().label(),style=MaterialTheme.typography.bodyMedium)
                             Text("${doc.groups.size} групп · каждая размещается независимо",style=MaterialTheme.typography.labelSmall)
-                            Row(horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(4.dp)) {
                                 TextButton(onClick={appendId=doc.id;picker.launch(arrayOf("*/*"))},enabled=!busy){Text("Добавить")}
+                                TextButton(onClick={editGroup=group}){Text("Размеры")}
                                 TextButton(onClick={val copy=group.copy(id=UUID.randomUUID().toString(),label=(group.label+" · копия").take(160));changed(doc.copy(groups=doc.groups+copy));groupId=copy.id},enabled=doc.groups.size<32){Text("Копия")}
                                 TextButton(onClick={removeGroup=group},enabled=doc.groups.size>1){Text("Убрать")}
                                 TextButton(onClick={exportDoc=doc;exporter.launch("interior-project.interior.zip")}){Text("Экспорт")}
@@ -160,6 +162,7 @@ fun InteriorApp() {
             if(busy)CircularProgressIndicator(Modifier.align(Alignment.Center))
         }
     }
+    editGroup?.let { group ->GroupSettingsDialog(group,onDismiss={editGroup=null},onSave={updated->selected?.let {doc->changed(doc.copy(groups=doc.groups.map{if(it.id==updated.id)updated else it}))}}) }
     deleteProject?.let { doc ->AlertDialog(onDismissRequest={deleteProject=null},title={Text("Удалить проект?")},
         text={Text(doc.title)},confirmButton={TextButton(onClick={documents=documents.filterNot{it.id==doc.id};writes.trySend{catalog.delete(doc.id)};deleteProject=null}){Text("Удалить")}},
         dismissButton={TextButton(onClick={deleteProject=null}){Text("Отмена")}})}
