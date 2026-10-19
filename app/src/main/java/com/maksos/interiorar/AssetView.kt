@@ -47,20 +47,28 @@ fun loadAsset(loader:ModelLoader,asset:KitchenProject):AssetLoad {
 @Composable
 fun AssetPreview(asset:KitchenProject) {
     key(asset.id) {
-        val engine=rememberEngine();val loader=rememberModelLoader(engine)
-        val loaded=loadAsset(loader,asset)
+        val engine=rememberEngine()
+        val loader=rememberModelLoader(engine)
+        // SceneView's own loader handles GLB resource decoding on its dispatcher,
+        // GPU-side asset creation on Main, and ownership on disposal.
+        // Import from a private file:// URI; no model scale normalization.
+        val instance=rememberModelInstance(loader,asset.modelUri)
         Box(Modifier.fillMaxSize()) {
-            SceneView(modifier=Modifier.fillMaxSize(),engine=engine,modelLoader=loader,
-                autoCenterContent=true,autoFitContent=true,
-                // autoFitContent controls the camera only when no orbit manipulator owns it.
-                // Static framing first; restoring orbit with explicit target is a separate step.
-                cameraManipulator=null) {
-                (loaded as? AssetLoad.Ready)?.model?.let {ModelNode(modelInstance=it,autoAnimate=false)}
+            SceneView(
+                modifier=Modifier.fillMaxSize(),
+                engine=engine,
+                modelLoader=loader,
+                autoCenterContent=true,
+                autoFitContent=true,
+                cameraManipulator=null
+            ) {
+                instance?.let { ModelNode(modelInstance=it,autoAnimate=false) }
             }
-            when(loaded) {
-                AssetLoad.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center).testTag("model-loading"))
-                is AssetLoad.Failed -> Surface(Modifier.align(Alignment.Center)) {Text((loaded as AssetLoad.Failed).reason)}
-                is AssetLoad.Ready -> Text("Модель загружена",modifier=Modifier.align(Alignment.TopStart).testTag("model-ready"),style=MaterialTheme.typography.labelSmall)
+            if(instance==null) {
+                CircularProgressIndicator(Modifier.align(Alignment.Center).testTag("model-loading"))
+            } else {
+                Text("Модель загружена",modifier=Modifier.align(Alignment.TopStart)
+                    .testTag("model-ready"),style=MaterialTheme.typography.labelSmall)
             }
         }
     }
