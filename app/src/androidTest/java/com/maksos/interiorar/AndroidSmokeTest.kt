@@ -47,9 +47,9 @@ class AndroidSmokeTest {
         val capture=File(dir,"blender-native-preview.png")
         assertTrue("Screenshot of native scene failed",device.takeScreenshot(capture))
         val image=BitmapFactory.decodeFile(capture.path)
-        assertNotNull("Screenshot could not be decoded",image)
+            ?: error("Screenshot could not be decoded")
         val colors=HashSet<Int>()
-        for(y in image!!.height/5 until image.height*2/3 step 7)
+        for(y in image.height/5 until image.height*2/3 step 7)
             for(x in image.width/5 until image.width*4/5 step 7)colors.add(image.getPixel(x,y))
         assertTrue("3D surface unexpectedly uniform",colors.size>20)
         File(dir,"preview-check.txt").writeText(
