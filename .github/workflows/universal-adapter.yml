@@ -1,0 +1,106 @@
+name: Universal Adapter APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [implementation/universal-import-lighting]
+    paths: [ci/request-adapter-run.txt, .github/workflows/universal-adapter.yml]
+  pull_request:
+    paths: [app/**, tools/**, .github/workflows/universal-adapter.yml]
+concurrency:
+  group: adapter-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+          cache-read-only: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Android SDK and model generators
+        run: |
+          SDKMANAGER=$(find /usr/local/lib/android/sdk/cmdline-tools -path '*/bin/sdkmanager' | head -n 1)
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" 'platforms;android-37.0' 'build-tools;36.0.0'
+          python -m pip install -r scripts/requirements-reference.txt
+          python scripts/generate_demo.py --output app/src/main/assets/demo_kitchen.glb
+          python scripts/build_reference_kitchen.py --output app/src/main/assets/reference_kitchen.glb --manifest assets/reference_kitchen_manifest.json
+          python scripts/split_reference_kitchen.py --output-dir app/src/main/assets --manifest assets/placement_groups_manifest.json
+          python scripts/build_fridge_module.py --output app/src/main/assets/fridge_opposite_wall.glb --manifest assets/fridge_module_manifest.json
+          python -m unittest discover -s scripts -p 'test_*.py' -v
+          if [ -f tools/test_adapter.py ]; then python -m unittest discover -s tools -p 'test_*.py' -v; fi
+          if [ -f tools/make_demo_pack.py ]; then python tools/make_demo_pack.py; fi
+      - name: Test and compile APKs
+        run: gradle --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Build identity
+        run: |
+          mkdir -p deliver
+          cp app/build/outputs/apk/debug/app-debug.apk deliver/Interior-AR-Adapter.apk
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk deliver/Interior-AR-Adapter-test.apk
+          sha256sum deliver/*.apk > deliver/SHA256SUMS.txt
+          git rev-parse HEAD > deliver/COMMIT.txt
+          cp -r tools deliver/adapter-tools 2>/dev/null || true
+          cp -r dist/. deliver/ 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: interior-adapter-delivery
+          path: deliver/
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: interior-adapter-test-reports
+          path: |
+            app/build/test-results/
+            app/build/reports/
+          if-no-files-found: ignore
+  emulator:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: interior-adapter-delivery
+          path: deliver
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            mkdir -p emulator-results
+            adb install -r deliver/Interior-AR-Adapter.apk
+            adb install -r deliver/Interior-AR-Adapter-test.apk
+            adb logcat -c
+            adb shell am instrument -w -r com.maksos.interiorar.test/androidx.test.runner.AndroidJUnitRunner > emulator-results/instrumentation.txt
+            adb logcat -d > emulator-results/logcat.txt
+            adb exec-out screencap -p > emulator-results/screen.png
+            cat emulator-results/instrumentation.txt
+            grep -E 'OK \([1-9][0-9]* tests?\)' emulator-results/instrumentation.txt
+            ! grep -E 'FAILURES|INSTRUMENTATION_FAILED|Process crashed' emulator-results/instrumentation.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: interior-adapter-emulator
+          path: emulator-results/
+          if-no-files-found: ignore
