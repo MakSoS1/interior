@@ -1,6 +1,10 @@
 package com.maksos.interiorar
 
 import android.graphics.BitmapFactory
+import android.graphics.Bitmap
+import android.util.Base64
+import android.util.Log
+import java.io.ByteArrayOutputStream
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -79,8 +83,21 @@ class AndroidSmokeTest {
                 for(x in bitmap.width/5 until bitmap.width*4/5 step 7)
                     sampled.add(bitmap.getPixel(x,y))
             File(directory,"preview-check.txt").writeText(
-                "asset="+selected.name+"\ndimensions="+selected.dimensions.label()+
-                "\nuniqueColors="+sampled.size+"\n")
+                "asset="+selected.name+"\\ndimensions="+selected.dimensions.label()+
+                "\\nuniqueColors="+sampled.size+"\\n")
+            Log.i("Interior3DQA","preview unique colors="+sampled.size)
+            // The emulator may disappear before adb pull on instrumentation failure.
+            // Emit a small JPEG thumbnail as bounded Base64 logcat chunks, allowing
+            // exact visual diagnosis from GitHub Actions log artifacts.
+            val thumbnail=Bitmap.createScaledBitmap(bitmap,240,530,true)
+            val bytes=ByteArrayOutputStream()
+            thumbnail.compress(Bitmap.CompressFormat.JPEG,70,bytes)
+            val encoded=Base64.encodeToString(bytes.toByteArray(),Base64.NO_WRAP)
+            val parts=encoded.chunked(900)
+            parts.forEachIndexed { index,part ->
+                Log.i("Interior3DQA","FRAME_PART "+index+"/"+parts.size+" "+part)
+            }
+            thumbnail.recycle()
             bitmap.recycle()
             assertTrue("Native 3D preview appears uniform", sampled.size>20)
             device.pressBack()
